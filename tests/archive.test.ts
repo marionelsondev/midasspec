@@ -32,7 +32,7 @@ let specsRoot: string;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'midas-'));
-  specsRoot = join(dir, 'docs', 'specs');
+  specsRoot = join(dir, '.midas', 'specs');
 });
 
 afterEach(async () => {
@@ -72,7 +72,7 @@ describe('archiveSpec', () => {
 
     const dest = join(specsRoot, 'archive', '2026-06-09-pricing-engine');
     expect(result.to).toBe(dest);
-    expect(result.relTo).toBe('docs/specs/archive/2026-06-09-pricing-engine');
+    expect(result.relTo).toBe('.midas/specs/archive/2026-06-09-pricing-engine');
     expect(result.forced).toBe(false);
     expect(result.pendingIssues).toBe(0);
     expect(await exists(join(specsRoot, 'pricing-engine'))).toBe(false);
@@ -144,12 +144,12 @@ describe('renderArchive', () => {
       slug: 'x',
       from: '/a/x',
       to: '/a/archive/2026-06-09-x',
-      relFrom: 'docs/specs/x',
-      relTo: 'docs/specs/archive/2026-06-09-x',
+      relFrom: '.midas/specs/x',
+      relTo: '.midas/specs/archive/2026-06-09-x',
       pendingIssues: 2,
       forced: true,
     });
-    expect(text).toContain("Archived 'x' -> docs/specs/archive/2026-06-09-x/");
+    expect(text).toContain("Archived 'x' -> .midas/specs/archive/2026-06-09-x/");
     expect(text).toContain('2 pending issues');
   });
 });
@@ -189,7 +189,7 @@ describe('makeArchiveCommand', () => {
 
     const payload = JSON.parse(out) as { slug: string; to: string; relTo: string };
     expect(payload.slug).toBe('pricing-engine');
-    expect(payload.relTo).toMatch(/^docs\/specs\/archive\/\d{4}-\d{2}-\d{2}-pricing-engine$/);
+    expect(payload.relTo).toMatch(/^\.midas\/specs\/archive\/\d{4}-\d{2}-\d{2}-pricing-engine$/);
     expect(payload.to).toContain('pricing-engine');
   });
 

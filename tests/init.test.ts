@@ -23,7 +23,7 @@ afterEach(async () => {
 });
 
 describe('initProject', () => {
-  it('creates docs/specs and midas.config.yaml in a fresh dir', async () => {
+  it('creates .midas/specs and midas.config.yaml in a fresh dir', async () => {
     const result = await initProject(dir);
 
     expect(result.initialized).toBe(true);
@@ -58,7 +58,7 @@ describe('initProject', () => {
     expect(after).toBe(before);
   });
 
-  it('creates config when docs/specs already exists, with createdSpecsRoot false', async () => {
+  it('creates config when .midas/specs already exists, with createdSpecsRoot false', async () => {
     await mkdir(join(dir, DEFAULT_SPECS_ROOT), { recursive: true });
 
     const result = await initProject(dir);

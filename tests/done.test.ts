@@ -238,7 +238,7 @@ describe('command wiring', () => {
   }
 
   async function makeSpec(): Promise<string> {
-    const specDir = join(dir, 'docs', 'specs', 'pricing-engine', 'issues');
+    const specDir = join(dir, '.midas', 'specs', 'pricing-engine', 'issues');
     await mkdir(specDir, { recursive: true });
     const indexPath = join(specDir, 'INDEX.md');
     await writeFile(indexPath, INDEX_FIXTURE, 'utf8');

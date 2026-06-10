@@ -32,12 +32,12 @@ Prepares a repository to use the SDD workflow.
 
 ### Components
 
-- **SpecsRoot**: the `docs/specs/` directory where all specs live
-- **ConfigFile**: `midas.config.yaml` at the repo root, with optional `context` (project background shown to AI) and `rules` (per-artifact rules for `spec` and `break`), and an optional `specsRoot` overriding the default `docs/specs/` root
+- **SpecsRoot**: the `.midas/specs/` directory where all specs live
+- **ConfigFile**: `midas.config.yaml` at the repo root, with optional `context` (project background shown to AI) and `rules` (per-artifact rules for `spec` and `break`), and an optional `specsRoot` overriding the default `.midas/specs/` root
 
 ### Behaviors
 
-- **create-specs-root**: creates `docs/specs/` when it does not exist
+- **create-specs-root**: creates `.midas/specs/` when it does not exist
 - **create-config-file**: writes a commented `midas.config.yaml` template with empty `context` and `rules` sections
 - **idempotent-init**: running `midas init` again never overwrites an existing config; it reports the project is already initialized
 
@@ -50,14 +50,14 @@ Scaffolds a new spec folder, replacing the manual slug and conflict handling don
 ### Components
 
 - **SlugArgument**: required spec name, accepted in any casing or spacing
-- **ScaffoldedFolder**: `docs/specs/<slug>/` created empty, ready to receive `SPEC.md`
+- **ScaffoldedFolder**: `.midas/specs/<slug>/` created empty, ready to receive `SPEC.md`
 - **ConflictError**: structured error returned when the spec already exists
 
 ### Behaviors
 
 - **normalize-slug**: the provided name is normalized to valid kebab-case before any filesystem action
-- **scaffold-spec-folder**: creates `docs/specs/<slug>/` and reports the created path
-- **reject-existing-spec**: if `docs/specs/<slug>/SPEC.md` already exists, exits non-zero with a conflict error and does not touch any file
+- **scaffold-spec-folder**: creates `.midas/specs/<slug>/` and reports the created path
+- **reject-existing-spec**: if `.midas/specs/<slug>/SPEC.md` already exists, exits non-zero with a conflict error and does not touch any file
 - **report-created-path**: on success, prints the path where `SPEC.md` must be written (also present in `--json` output)
 
 ---
@@ -73,7 +73,7 @@ Read-only view of every spec and its progress, parsed from the markdown files.
 
 ### Behaviors
 
-- **list-specs**: `midas status` lists every folder under `docs/specs/` with its progress summary
+- **list-specs**: `midas status` lists every folder under `.midas/specs/` with its progress summary
 - **show-spec-status**: `midas status <slug>` shows the spec's issues with done/pending state parsed from `INDEX.md` checkboxes
 - **handle-not-broken-down**: a spec without an `issues/` folder is shown as "not broken down" instead of an error
 - **fail-on-unknown-spec**: an unknown slug exits non-zero with a clear message
@@ -158,7 +158,7 @@ Moves a finished spec out of the active list, preserving history.
 
 ### Components
 
-- **ArchiveFolder**: `docs/specs/archive/<YYYY-MM-DD>-<slug>/` containing the spec verbatim
+- **ArchiveFolder**: `.midas/specs/archive/<YYYY-MM-DD>-<slug>/` containing the spec verbatim
 
 ### Behaviors
 

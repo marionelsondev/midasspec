@@ -6,7 +6,7 @@
 
 ## Functional Specification
 
-- `midas archive <slug>` moves the spec folder into `docs/specs/archive/<YYYY-MM-DD>-<slug>/`.
+- `midas archive <slug>` moves the spec folder into `.midas/specs/archive/<YYYY-MM-DD>-<slug>/`.
 - Archiving a spec with pending issues requires explicit confirmation (`--force`).
 - Archived files are moved unchanged, never rewritten.
 
@@ -18,7 +18,7 @@
 
 1. User runs `midas archive pricing-engine`.
 2. The CLI checks the INDEX for pending issues.
-3. If all issues are done, the folder is moved to `docs/specs/archive/<YYYY-MM-DD>-pricing-engine/`.
+3. If all issues are done, the folder is moved to `.midas/specs/archive/<YYYY-MM-DD>-pricing-engine/`.
 4. If issues are pending, the CLI refuses unless `--force` is passed.
 
 ## Expected Result

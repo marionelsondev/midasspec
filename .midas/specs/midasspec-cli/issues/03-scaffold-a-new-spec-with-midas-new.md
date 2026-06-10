@@ -7,8 +7,8 @@
 ## Functional Specification
 
 - `midas new <name>` normalizes the provided name to valid kebab-case before any filesystem action.
-- The command creates `docs/specs/<slug>/` and prints the path where `SPEC.md` must be written.
-- If `docs/specs/<slug>/SPEC.md` already exists, the command exits non-zero with a structured conflict error and touches no file.
+- The command creates `.midas/specs/<slug>/` and prints the path where `SPEC.md` must be written.
+- If `.midas/specs/<slug>/SPEC.md` already exists, the command exits non-zero with a structured conflict error and touches no file.
 - With `--json`, the created path (or the conflict error) is returned as a structured object.
 
 ## Preconditions
@@ -18,7 +18,7 @@
 ## Main Flow
 
 1. User runs `midas new "Pricing Engine"`.
-2. The CLI normalizes the name to `pricing-engine` and creates `docs/specs/pricing-engine/`.
+2. The CLI normalizes the name to `pricing-engine` and creates `.midas/specs/pricing-engine/`.
 3. The CLI prints the target path for `SPEC.md`.
 4. User runs the same command again and receives a conflict error with a non-zero exit code.
 

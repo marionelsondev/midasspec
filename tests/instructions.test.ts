@@ -54,7 +54,7 @@ describe('getInstructions', () => {
     expect(payload.rules).toEqual(['keep pages small', 'name behaviors in kebab-case']);
     expect(payload.context).toContain('Internal billing platform.');
     expect(payload.outputPath).toBe(join(dir, DEFAULT_SPECS_ROOT, 'pricing-engine', 'SPEC.md'));
-    expect(payload.relOutputPath).toBe('docs/specs/pricing-engine/SPEC.md');
+    expect(payload.relOutputPath).toBe('.midas/specs/pricing-engine/SPEC.md');
   });
 
   it('returns issue template, break rules, and issues/ path for break', async () => {
@@ -68,7 +68,7 @@ describe('getInstructions', () => {
     expect(payload.rules).toEqual(['one issue per behavior']);
     expect(payload.context).toContain('Internal billing platform.');
     expect(payload.outputPath).toBe(join(dir, DEFAULT_SPECS_ROOT, 'pricing-engine', 'issues'));
-    expect(payload.relOutputPath).toBe('docs/specs/pricing-engine/issues');
+    expect(payload.relOutputPath).toBe('.midas/specs/pricing-engine/issues');
   });
 
   it('uses a <slug> placeholder path for spec without a slug', async () => {
@@ -77,7 +77,7 @@ describe('getInstructions', () => {
     const payload = await getInstructions(dir, 'spec');
 
     expect(payload.outputPath).toBe(join(dir, DEFAULT_SPECS_ROOT, '<slug>', 'SPEC.md'));
-    expect(payload.relOutputPath).toBe('docs/specs/<slug>/SPEC.md');
+    expect(payload.relOutputPath).toBe('.midas/specs/<slug>/SPEC.md');
   });
 
   it('has context: null (key present) when context is omitted', async () => {

@@ -14,7 +14,7 @@ edits them, never replaces them.
 
 ## Where things live
 
-- Specs live under \`docs/specs/<spec-name>/\` by default (configurable via
+- Specs live under \`.midas/specs/<spec-name>/\` by default (configurable via
   \`specsRoot\` in \`midas.config.yaml\`).
 - Each spec folder has a \`SPEC.md\` (the functional spec), an \`issues/\` folder
   with one markdown file per issue, and \`issues/INDEX.md\` tracking done state

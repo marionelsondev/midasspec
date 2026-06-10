@@ -182,7 +182,7 @@ describe('makeIssuesCommand', () => {
   }
 
   async function makeSpec(): Promise<void> {
-    const specDir = join(dir, 'docs', 'specs', 'pricing-engine', 'issues');
+    const specDir = join(dir, '.midas', 'specs', 'pricing-engine', 'issues');
     await mkdir(specDir, { recursive: true });
     await writeFile(join(specDir, 'INDEX.md'), INDEX_FIXTURE, 'utf8');
   }
@@ -251,7 +251,7 @@ describe('makeIssuesCommand', () => {
   });
 
   it('rejects an unknown slug with CliError', async () => {
-    await mkdir(join(dir, 'docs', 'specs'), { recursive: true });
+    await mkdir(join(dir, '.midas', 'specs'), { recursive: true });
     const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir);
     try {
       await expect(

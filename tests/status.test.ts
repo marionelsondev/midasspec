@@ -195,7 +195,7 @@ describe('makeStatusCommand', () => {
   }
 
   it('emits a single JSON doc listing specs with --json', async () => {
-    const specsRoot = join(dir, 'docs', 'specs');
+    const specsRoot = join(dir, '.midas', 'specs');
     await mkdir(join(specsRoot, 'pricing-engine', 'issues'), { recursive: true });
     await writeFile(join(specsRoot, 'pricing-engine', 'issues', 'INDEX.md'), INDEX_FIXTURE, 'utf8');
 
@@ -208,7 +208,7 @@ describe('makeStatusCommand', () => {
   });
 
   it('shows detail for a known slug with --json', async () => {
-    const specsRoot = join(dir, 'docs', 'specs');
+    const specsRoot = join(dir, '.midas', 'specs');
     await mkdir(join(specsRoot, 'pricing-engine', 'issues'), { recursive: true });
     await writeFile(join(specsRoot, 'pricing-engine', 'issues', 'INDEX.md'), INDEX_FIXTURE, 'utf8');
 
@@ -221,7 +221,7 @@ describe('makeStatusCommand', () => {
   });
 
   it('shows a not-broken-down spec without erroring', async () => {
-    const specsRoot = join(dir, 'docs', 'specs');
+    const specsRoot = join(dir, '.midas', 'specs');
     await mkdir(join(specsRoot, 'bare-spec'), { recursive: true });
 
     const out = await runCapture(['status', 'bare-spec'], dir);
@@ -229,7 +229,7 @@ describe('makeStatusCommand', () => {
   });
 
   it('rejects with CliError for an unknown slug', async () => {
-    await mkdir(join(dir, 'docs', 'specs'), { recursive: true });
+    await mkdir(join(dir, '.midas', 'specs'), { recursive: true });
     const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir);
     try {
       await expect(

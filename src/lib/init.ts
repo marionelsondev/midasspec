@@ -6,11 +6,11 @@ import { generateCommands } from './commands-gen.js';
 import { generateSkills } from './skills-gen.js';
 import type { ToolDescriptor } from './tools.js';
 
-export const DEFAULT_SPECS_ROOT = 'docs/specs';
+export const DEFAULT_SPECS_ROOT = '.midas/specs';
 export const CONFIG_FILENAME = 'midas.config.yaml';
 
 export const CONFIG_TEMPLATE = `# MidasSpec configuration
-# specsRoot: docs/specs        # optional: override where specs live
+# specsRoot: .midas/specs      # optional: override where specs live
 # context: |                   # project background shown to AI skills
 context:
 # rules:

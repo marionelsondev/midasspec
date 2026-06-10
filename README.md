@@ -42,7 +42,7 @@ midas update
 ## The workflow
 
 ```bash
-midas new "payment flow"        # scaffold docs/specs/payment-flow/
+midas new "payment flow"        # scaffold .midas/specs/payment-flow/
 # ...write SPEC.md (or let your agent do it via /midas:spec)
 midas instructions break --spec payment-flow --json   # templates + rules for issue breakdown
 # ...write issues/*.md and issues/INDEX.md (or /midas:break)
@@ -60,7 +60,7 @@ Every command supports `--json` for machine-readable output, which is how the ge
 `midas init` writes `midas.config.yaml` at the repo root:
 
 ```yaml
-# specsRoot: docs/specs   # where specs live (default: docs/specs)
+# specsRoot: .midas/specs   # where specs live (default: .midas/specs)
 context: |                # project background injected into AI instructions
 rules:                    # per-artifact rules for `midas instructions`
 #   spec: []

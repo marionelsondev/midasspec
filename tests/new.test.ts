@@ -60,14 +60,14 @@ describe('resolveSpecsRoot', () => {
 });
 
 describe('newSpec', () => {
-  it('creates docs/specs/pricing-engine and returns paths', async () => {
+  it('creates .midas/specs/pricing-engine and returns paths', async () => {
     const result = await newSpec(dir, 'Pricing Engine');
 
     expect(result.slug).toBe('pricing-engine');
     expect(result.dir).toBe(join(dir, DEFAULT_SPECS_ROOT, 'pricing-engine'));
     expect(result.specPath).toBe(join(dir, DEFAULT_SPECS_ROOT, 'pricing-engine', 'SPEC.md'));
-    expect(result.relDir).toBe('docs/specs/pricing-engine');
-    expect(result.relSpecPath).toBe('docs/specs/pricing-engine/SPEC.md');
+    expect(result.relDir).toBe('.midas/specs/pricing-engine');
+    expect(result.relSpecPath).toBe('.midas/specs/pricing-engine/SPEC.md');
     expect((await stat(result.dir)).isDirectory()).toBe(true);
   });
 
