@@ -1,8 +1,8 @@
 # MidasSpec
 
-Spec-Driven Development (SDD) CLI. `midas` scaffolds spec folders, validates SPEC/issue markdown files, tracks issue progress, resolves issue dependency graphs — and installs the SDD workflow into your AI coding agents (Claude Code, Cursor, Windsurf, and any agent that reads `AGENTS.md`).
+Spec-Driven Development (SDD) CLI. `midas` scaffolds spec folders, validates SPEC/issue markdown files, tracks issue progress with a dependency graph — and installs the SDD workflow into your AI coding agents (Claude Code, Cursor, Windsurf, and any agent that reads `AGENTS.md`).
 
-Markdown is the single source of truth: the CLI parses and edits `SPEC.md`, `issues/*.md`, and `issues/INDEX.md` — it never replaces them. AI agents keep the creative writing; the CLI guarantees structure, consistency, and tracking.
+Markdown is the single source of truth: the CLI parses and edits `SPEC.md`, `issues/*.md`, and `issues/INDEX.md` — it never replaces them. AI agents do the creative writing; the CLI guarantees structure, consistency, and tracking.
 
 ## Install
 
@@ -10,68 +10,97 @@ Markdown is the single source of truth: the CLI parses and edits `SPEC.md`, `iss
 npm install -g midasspec
 ```
 
-Requires Node.js 18+.
+Requires Node.js 18+. Check with `midas --version` (prints `midasspec@x.y.z`).
 
-## Quick start
+## Setup
 
 ```bash
 cd your-project
 midas init
 ```
 
-`midas init` detects the AI tools present in your repo (`.claude/`, `.cursor/`, `.windsurf/`, …), lets you confirm the selection, and generates three integration layers:
+The first `init` on your machine runs a one-time global setup: pick your AI tools and language (`en-US` or `pt-BR`), saved to `~/.midas/config.yaml`. Each project `init` then creates `.midas/specs/` and a minimal `.midas/config.yaml`, and generates three integration layers for the configured tools:
 
-- **`AGENTS.md` managed block** — SDD workflow instructions inside `<!-- midas:begin -->` / `<!-- midas:end -->` markers, picked up by every AGENTS.md-aware agent. Your own content is never touched.
-- **Slash commands** — `/midas:spec`, `/midas:break`, `/midas:implement`, `/midas:archive` in each tool's native format (e.g. `.claude/commands/midas/`).
-- **Agent Skills** — `midas-*` skill directories (`SKILL.md`) under each tool's skills folder.
+- **`AGENTS.md` managed block** — SDD instructions between `<!-- midas:begin -->` / `<!-- midas:end -->` markers; your own content is never touched.
+- **Slash commands** — `/midas:spec`, `/midas:break`, `/midas:implement`, `/midas:archive` in each tool's native format.
+- **Agent skills** — `midas-spec`, `midas-break`, `midas-implement`, `midas-archive` (`SKILL.md`) under each tool's skills folder.
 
-Non-interactive (CI):
-
-```bash
-midas init --tools claude,cursor   # exact selection
-midas init --tools all             # every supported tool
-midas init --force                 # detected tools, no prompt
-```
-
-After upgrading the CLI, refresh the generated files:
+Non-interactive:
 
 ```bash
-midas update
+midas init --tools claude,cursor --language pt-BR   # explicit selection
+midas init --tools all                              # every supported tool
+midas init --force                                  # reuse the global config, no prompt
 ```
 
 ## The workflow
 
-```bash
-midas new "payment flow"        # scaffold .midas/specs/payment-flow/
-# ...write SPEC.md (or let your agent do it via /midas:spec)
-midas instructions break --spec payment-flow --json   # templates + rules for issue breakdown
-# ...write issues/*.md and issues/INDEX.md (or /midas:break)
-midas validate payment-flow     # check artifact formats and INDEX consistency
-midas issues payment-flow --ready   # dependency-aware: what can be worked on now
-midas done payment-flow 03      # mark an issue done; reports newly unblocked issues
-midas status                    # progress across all specs
-midas archive payment-flow      # move a finished spec to the archive
-```
+1. `midas new "payment flow"` — scaffold `.midas/specs/payment-flow/`
+2. `/midas:spec` — your agent writes `SPEC.md`
+3. `/midas:break` — your agent breaks the spec into `issues/*.md` + `issues/INDEX.md` with dependencies
+4. `/midas:implement` — your agent implements ready issues (`manual`, `auto`, or `ultracode` parallel mode), tracking each with `start`/`done`
+5. `midas status` — follow progress
+6. `/midas:archive` — validate and archive the finished spec
 
-Every command supports `--json` for machine-readable output, which is how the generated slash commands and skills drive the CLI.
+Every step also works without an agent, via the commands below.
+
+## Commands
+
+Every command accepts `--json` for machine-readable output (that's how the slash commands and skills drive the CLI). Exit code is 0 on success, non-zero on error.
+
+| Command | What it does |
+| --- | --- |
+| `midas init [--tools <ids\|all>] [--language <lang>] [--force]` | Prepare the repo: global setup on first run, then `.midas/` scaffolding and agent integrations. |
+| `midas update` | Regenerate the global integration files (commands/skills) after upgrading the CLI. |
+| `midas new <name>` | Scaffold a new spec folder with a slug derived from the name. |
+| `midas status [slug]` | Without slug: all specs grouped by lifecycle (in progress / not started / not broken down / done), each with progress bar and next actionable issue. With slug: per-issue detail. |
+| `midas issues <slug> [--ready\|--blocked\|--done]` | List a spec's issues with dependency-aware filters. `--ready` = no pending blockers. |
+| `midas start <slug> <number>` | Mark an issue as in progress (`[~]` in INDEX.md). |
+| `midas done <slug> <number>` | Mark an issue done (`[x]`) and report newly unblocked issues. |
+| `midas reopen <slug> <number>` | Reopen a done issue (`[ ]`). |
+| `midas validate <slug>` | Validate SPEC.md, issue files, and INDEX.md consistency. |
+| `midas instructions <spec\|break> [--spec <slug>]` | Emit artifact-writing instructions (template, context, rules) for AI skills. |
+| `midas archive <slug> [--force]` | Move a finished spec to `.midas/specs/archive/`. |
+
+## Slash commands / skills
+
+Generated for each configured tool; commands and skills are the same four workflows:
+
+| Workflow | What the agent does |
+| --- | --- |
+| `/midas:spec [spec-name]` | Scaffolds the spec if needed, asks clarifying questions, writes `SPEC.md` following the project's template and rules, validates. |
+| `/midas:break [spec-slug]` | Breaks `SPEC.md` into small, independently verifiable issues with a `blocked by` dependency graph, validates. |
+| `/midas:implement [spec-slug] [manual\|auto\|ultracode]` | Implements ready issues. `manual`: one issue per run, you review between issues. `auto`: all ready issues sequentially. `ultracode`: parallel multi-agent execution following the dependency graph. |
+| `/midas:archive [spec-slug]` | Confirms every issue is done, validates, and archives the spec. |
 
 ## Configuration
 
-`midas init` writes `midas.config.yaml` at the repo root:
+Two layers; project overrides global.
+
+`~/.midas/config.yaml` (global, written by the first `init`):
 
 ```yaml
-# specsRoot: .midas/specs   # where specs live (default: .midas/specs)
-context: |                # project background injected into AI instructions
-rules:                    # per-artifact rules for `midas instructions`
+tools:            # AI tools to generate integrations for
+  - claude
+language: en-US   # en-US | pt-BR — language of specs/issues and AI conversation
+```
+
+`.midas/config.yaml` (per project):
+
+```yaml
+# specsRoot: .midas/specs   # where specs live (default)
+# language: pt-BR           # override the global language
+# context: |                # project background shown to AI skills
+# rules:                    # per-artifact rules for `midas instructions`
 #   spec: []
 #   break: []
-tools:                    # AI tools configured by `midas init`
-  - claude
 ```
+
+CLI human output is always English; `language` governs spec/issue content and the AI conversation.
 
 ## Supported tools
 
-Detection covers Claude Code, Cursor, Windsurf, Codex, Gemini CLI, GitHub Copilot, OpenCode, Cline, Roo Code, Kilo Code, Aider, Amazon Q, and Zed. Tools without a native slash-command or skills convention still benefit from the universal `AGENTS.md` layer.
+Claude Code, Cursor, Windsurf, Codex, Gemini CLI, GitHub Copilot, OpenCode, Cline, Roo Code, Kilo Code, Aider, Amazon Q, and Zed. Tools without a native slash-command or skills convention still get the universal `AGENTS.md` layer.
 
 ## License
 
