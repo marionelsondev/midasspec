@@ -1,0 +1,108 @@
+import { Command } from 'commander';
+import { relative } from 'node:path';
+import { printResult } from '../lib/output.js';
+import {
+  CONFIG_FILENAME,
+  generateIntegrations,
+  initProject,
+  readConfigTools,
+  setConfigTools,
+  type GeneratedReport,
+  type InitResult,
+} from '../lib/init.js';
+import { detectTools, resolveToolsFlag, TOOL_REGISTRY, type ToolDescriptor } from '../lib/tools.js';
+import { pickCheckbox } from '../lib/picker.js';
+
+export interface InitPayload extends InitResult {
+  tools: string[];
+  generated: GeneratedReport;
+}
+
+interface InitOptions {
+  tools?: string;
+  force?: boolean;
+}
+
+export function renderToolFiles(
+  layer: string,
+  group: GeneratedReport['commands'],
+  lines: string[]
+): void {
+  if (group.byTool.length === 0 && group.skipped.length === 0) {
+    return;
+  }
+  lines.push(`${layer}:`);
+  for (const entry of group.byTool) {
+    lines.push(`  ${entry.tool}:`);
+    for (const file of entry.files) {
+      lines.push(`    ${file}`);
+    }
+  }
+  if (group.skipped.length > 0) {
+    lines.push(`  skipped (not supported): ${group.skipped.join(', ')}`);
+  }
+}
+
+export function renderInit(payload: InitPayload, cwd: string): string {
+  const lines: string[] = [];
+  if (payload.initialized) {
+    lines.push('Initialized MidasSpec project.');
+    lines.push(`  created ${relative(cwd, payload.specsRoot)}`);
+    lines.push(`  created ${CONFIG_FILENAME}`);
+  } else {
+    lines.push(`Project already initialized (${CONFIG_FILENAME} exists).`);
+  }
+  lines.push(`Tools: ${payload.tools.length > 0 ? payload.tools.join(', ') : 'none'}`);
+  lines.push(`${payload.generated.agents.path} ${payload.generated.agents.action}`);
+  renderToolFiles('Slash commands', payload.generated.commands, lines);
+  renderToolFiles('Skills', payload.generated.skills, lines);
+  lines.push(`Saved tools to ${CONFIG_FILENAME}.`);
+  return lines.join('\n');
+}
+
+async function resolveSelection(cwd: string, opts: InitOptions): Promise<ToolDescriptor[]> {
+  if (opts.tools !== undefined) {
+    return resolveToolsFlag(opts.tools);
+  }
+  const interactive =
+    opts.force !== true && process.stdin.isTTY === true && process.stdout.isTTY === true;
+  if (interactive) {
+    const detected = await detectTools(cwd);
+    const detectedIds = new Set(detected.map((tool) => tool.id));
+    const pickedIds = await pickCheckbox(
+      TOOL_REGISTRY.map((tool) => ({
+        id: tool.id,
+        label: tool.name,
+        checked: detectedIds.has(tool.id),
+      })),
+      { input: process.stdin, output: process.stdout }
+    );
+    return TOOL_REGISTRY.filter((tool) => pickedIds.includes(tool.id));
+  }
+  // --force / non-TTY: reuse the existing tools config when present, else detect.
+  const configured = await readConfigTools(cwd);
+  if (configured !== null) {
+    return TOOL_REGISTRY.filter((tool) => configured.includes(tool.id));
+  }
+  return detectTools(cwd);
+}
+
+export function makeInitCommand(): Command {
+  return new Command('init')
+    .description('Prepare the repository for the SDD workflow')
+    .option('--tools <ids>', 'comma-separated tool ids (or "all"); skips the prompt')
+    .option('--force', 'skip the prompt, using detected tools or the existing tools config')
+    .action(async (opts: InitOptions, cmd: Command) => {
+      const json = cmd.optsWithGlobals<{ json?: boolean }>().json === true;
+      const cwd = process.cwd();
+
+      const selected = await resolveSelection(cwd, opts);
+      const result = await initProject(cwd);
+      const generated = await generateIntegrations(cwd, selected);
+      const toolIds = selected.map((tool) => tool.id);
+      await setConfigTools(cwd, toolIds);
+
+      const payload: InitPayload = { ...result, tools: toolIds, generated };
+      printResult(payload, renderInit(payload, cwd), json);
+    });
+}

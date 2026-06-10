@@ -1,0 +1,90 @@
+import { Command, CommanderError } from 'commander';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+import { CliError, renderError } from './lib/output.js';
+import { makeArchiveCommand } from './commands/archive.js';
+import { makeDoneCommand, makeReopenCommand } from './commands/done.js';
+import { makeInitCommand } from './commands/init.js';
+import { makeInstructionsCommand } from './commands/instructions.js';
+import { makeIssuesCommand } from './commands/issues.js';
+import { makeNewCommand } from './commands/new.js';
+import { makeStatusCommand } from './commands/status.js';
+import { makeUpdateCommand } from './commands/update.js';
+import { makeValidateCommand } from './commands/validate.js';
+
+const require = createRequire(import.meta.url);
+const pkg = require('../package.json') as { version: string; description: string };
+
+export interface CliIO {
+  stdout: (chunk: string) => void;
+  stderr: (chunk: string) => void;
+}
+
+export function buildProgram(): Command {
+  const program = new Command('midas');
+
+  program
+    .description(pkg.description)
+    .version(pkg.version)
+    .option('--json', 'emit machine-readable JSON output')
+    .usage('[options] [command]')
+    .exitOverride()
+    .showHelpAfterError(false);
+
+  program.argument('[command]').action((command: string | undefined) => {
+    if (command) {
+      throw new CliError(`unknown command '${command}'`, 1);
+    }
+    program.outputHelp();
+  });
+
+  program.addCommand(makeInitCommand());
+  program.addCommand(makeUpdateCommand());
+  program.addCommand(makeNewCommand());
+  program.addCommand(makeInstructionsCommand());
+  program.addCommand(makeStatusCommand());
+  program.addCommand(makeIssuesCommand());
+  program.addCommand(makeDoneCommand());
+  program.addCommand(makeReopenCommand());
+  program.addCommand(makeValidateCommand());
+  program.addCommand(makeArchiveCommand());
+
+  return program;
+}
+
+export async function runCli(argv: string[], io?: Partial<CliIO>): Promise<number> {
+  const stdout = io?.stdout ?? ((chunk: string) => process.stdout.write(chunk));
+  const stderr = io?.stderr ?? ((chunk: string) => process.stderr.write(chunk));
+
+  const program = buildProgram();
+  program.configureOutput({ writeOut: stdout, writeErr: stderr });
+
+  try {
+    await program.parseAsync(argv, { from: 'user' });
+    return 0;
+  } catch (err) {
+    if (err instanceof CommanderError) {
+      // help/version carry exitCode 0; parse errors carry non-zero.
+      return err.exitCode;
+    }
+    if (err instanceof CliError) {
+      const json = program.opts<{ json?: boolean }>().json === true;
+      stderr(renderError(err.message, json) + '\n');
+      return err.exitCode;
+    }
+    stderr(renderError(err instanceof Error ? err.message : String(err), false) + '\n');
+    return 1;
+  }
+}
+
+const isMain = (() => {
+  try {
+    return process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+  } catch {
+    return false;
+  }
+})();
+
+if (isMain) {
+  process.exitCode = await runCli(process.argv.slice(2));
+}

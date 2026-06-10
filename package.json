@@ -1,0 +1,55 @@
+{
+  "name": "midasspec",
+  "version": "0.1.0",
+  "description": "Spec-Driven Development CLI: scaffold specs, validate artifacts, and track issue progress from markdown.",
+  "keywords": [
+    "spec-driven-development",
+    "sdd",
+    "cli",
+    "spec",
+    "ai",
+    "agents",
+    "claude",
+    "cursor",
+    "agents-md",
+    "workflow"
+  ],
+  "license": "MIT",
+  "author": "Mário Nelson",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marionelsondev/midasspec.git"
+  },
+  "homepage": "https://github.com/marionelsondev/midasspec#readme",
+  "bugs": {
+    "url": "https://github.com/marionelsondev/midasspec/issues"
+  },
+  "type": "module",
+  "bin": {
+    "midas": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "prepublishOnly": "npm test && npm run build"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.10.0",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
