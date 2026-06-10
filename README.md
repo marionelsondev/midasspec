@@ -1,3 +1,5 @@
+**English** | [Português (Brasil)](./README.pt-BR.md)
+
 # MidasSpec
 
 Spec-Driven Development (SDD) CLI. `midas` scaffolds spec folders, validates SPEC/issue markdown files, tracks issue progress with a dependency graph — and installs the SDD workflow into your AI coding agents (Claude Code, Cursor, Windsurf, and any agent that reads `AGENTS.md`).
