@@ -66,6 +66,29 @@ export const sym = {
   blockEmpty: u('░', '.'),
 };
 
+const BANNER_LINES = [
+  '███╗   ███╗ ██╗ ██████╗   █████╗  ███████╗',
+  '████╗ ████║ ██║ ██╔══██╗ ██╔══██╗ ██╔════╝',
+  '██╔████╔██║ ██║ ██║  ██║ ███████║ ███████╗',
+  '██║╚██╔╝██║ ██║ ██║  ██║ ██╔══██║ ╚════██║',
+  '██║ ╚═╝ ██║ ██║ ██████╔╝ ██║  ██║ ███████║',
+  '╚═╝     ╚═╝ ╚═╝ ╚═════╝  ╚═╝  ╚═╝ ╚══════╝',
+];
+
+/**
+ * The MIDAS wordmark in a top-to-bottom gold gradient (bright → gold → deep,
+ * like light falling on metal), with a dim tagline. Falls back to a plain
+ * bold word on terminals without unicode box-drawing support.
+ */
+export function banner(tagline: string): string {
+  if (!unicode) {
+    return `${bold(gold('M I D A S'))}\n${dim(tagline)}\n`;
+  }
+  const shades = [goldBright, goldBright, gold, gold, goldDim, goldDim];
+  const art = BANNER_LINES.map((row, i) => shades[i](row)).join('\n');
+  return `${art}\n${dim(tagline)}\n`;
+}
+
 /** `┌  midas · <subtitle>` — opens every multi-section report. */
 export function header(subtitle: string): string {
   return `${gold(sym.barStart)}  ${bold(gold('midas'))} ${dim(sym.dot)} ${dim(subtitle)}`;

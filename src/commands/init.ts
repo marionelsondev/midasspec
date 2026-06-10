@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { relative } from 'node:path';
 import { printResult } from '../lib/output.js';
-import { dim, footer, gold, header, line, step, sym } from '../lib/theme.js';
+import { banner, dim, footer, gold, header, line, step, sym } from '../lib/theme.js';
 import {
   CONFIG_FILENAME,
   generateIntegrations,
@@ -78,6 +78,7 @@ async function resolveSelection(cwd: string, opts: InitOptions): Promise<ToolDes
   const interactive =
     opts.force !== true && process.stdin.isTTY === true && process.stdout.isTTY === true;
   if (interactive) {
+    process.stdout.write(`${banner('Spec-Driven Development')}\n`);
     const detected = await detectTools(cwd);
     const detectedIds = new Set(detected.map((tool) => tool.id));
     const pickedIds = await pickCheckbox(
