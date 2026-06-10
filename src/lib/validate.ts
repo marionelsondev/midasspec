@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { CliError } from './output.js';
 import { resolveSpecsRoot } from './new.js';
+import { dim, gold, red, sym, yellowWarn } from './theme.js';
 
 // NOTE: issue 04 owns src/lib/index-parser.ts (parseIndex). It does not exist
 // yet, so the minimal INDEX parsing this command needs lives here as local
@@ -279,9 +280,14 @@ export async function validateSpec(cwd: string, slug: string): Promise<ValidateR
 }
 
 export function renderHumanReport(result: ValidateResult): string {
-  const lines = result.findings.map((f) => `${f.severity}  ${f.file}  ${f.rule}: ${f.message}`);
+  const lines = result.findings.map((f) => {
+    const tag = f.severity === 'error' ? red(`${sym.cross} ${f.severity}`) : yellowWarn(f.severity);
+    return `${tag}  ${f.file}  ${dim(`${f.rule}:`)} ${f.message}`;
+  });
   lines.push(
-    `${result.ok ? 'OK' : 'FAILED'}: ${result.errorCount} error(s), ${result.warningCount} warning(s)`,
+    result.ok
+      ? `${gold(sym.check)} OK: ${result.errorCount} error(s), ${result.warningCount} warning(s)`
+      : `${red(sym.cross)} FAILED: ${result.errorCount} error(s), ${result.warningCount} warning(s)`,
   );
   return lines.join('\n');
 }

@@ -282,9 +282,14 @@ describe('pickCheckbox', () => {
       { input, output }
     );
 
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 10));
+    await tick();
     input.write(' '); // toggle A off
+    await tick();
     input.write('[B'); // down to B
+    await tick();
     input.write(' '); // toggle B on
+    await tick();
     input.write('\r'); // confirm
 
     await expect(picked).resolves.toEqual(['b']);

@@ -1,5 +1,6 @@
-import { emitKeypressEvents, type Key } from 'node:readline';
+import { checkbox } from '@inquirer/prompts';
 import { CliError } from './output.js';
+import { bold, dim, gold, goldBright, sym } from './theme.js';
 
 export interface PickerItem {
   id: string;
@@ -7,80 +8,56 @@ export interface PickerItem {
   checked: boolean;
 }
 
-interface PickerInput extends NodeJS.ReadableStream {
-  setRawMode?: (mode: boolean) => unknown;
-}
-
 export interface PickerIO {
-  input: PickerInput;
+  input: NodeJS.ReadableStream;
   output: NodeJS.WritableStream;
 }
 
 /**
- * Hand-rolled checkbox picker on node:readline keypress events — no new
- * runtime dependencies. Up/Down move the cursor, Space toggles the current
- * item, Enter confirms (resolving the checked ids), Ctrl+C aborts.
+ * Tool multi-select on @inquirer/checkbox (the same base OpenSpec uses),
+ * skinned with the midas gold theme. Inquirer owns the hard parts —
+ * pagination, vim keys, `a` toggle-all / `i` invert, resize, Ctrl+C
+ * cleanup — while theme.ts owns every color and glyph.
  *
- * Streams are injected so tests can drive it with non-TTY streams; raw mode
- * is only toggled when the input supports it.
+ * Streams are injected so tests can drive it with non-TTY streams.
  */
-export function pickCheckbox(items: PickerItem[], io: PickerIO): Promise<string[]> {
-  return new Promise((resolve, reject) => {
-    const state = items.map((item) => ({ ...item }));
-    let cursor = 0;
-    let rendered = false;
-    const lineCount = state.length + 1;
-
-    emitKeypressEvents(io.input);
-    if (typeof io.input.setRawMode === 'function') {
-      io.input.setRawMode(true);
+export async function pickCheckbox(items: PickerItem[], io: PickerIO): Promise<string[]> {
+  try {
+    return await checkbox<string>(
+      {
+        message: 'Select tools',
+        choices: items.map((item) => ({
+          value: item.id,
+          name: item.label,
+          checked: item.checked,
+        })),
+        pageSize: 15,
+        loop: false,
+        theme: {
+          prefix: { idle: goldBright(sym.active), done: gold(sym.step) },
+          style: {
+            message: (text: string) => bold(text),
+            answer: (text: string) => gold(text),
+            highlight: (text: string) => goldBright(text),
+            help: (text: string) => dim(text),
+            renderSelectedChoices: (selected: ReadonlyArray<{ name?: string; value: string }>) =>
+              selected.length > 0
+                ? selected.map((choice) => choice.name ?? choice.value).join(', ')
+                : 'none',
+          },
+          icon: {
+            checked: gold(sym.on),
+            unchecked: dim(sym.off),
+            cursor: goldBright('❯'),
+          },
+        },
+      },
+      { input: io.input, output: io.output }
+    );
+  } catch (err) {
+    if (err instanceof Error && err.name === 'ExitPromptError') {
+      throw new CliError('aborted', 130);
     }
-    io.output.write('\u001b[?25l');
-
-    const render = (): void => {
-      const lines = ['Select tools (Space toggles, Enter confirms):'];
-      state.forEach((item, i) => {
-        lines.push(`${i === cursor ? '>' : ' '} [${item.checked ? 'x' : ' '}] ${item.label}`);
-      });
-      const prefix = rendered ? `\u001b[${lineCount}A` : '';
-      rendered = true;
-      io.output.write(prefix + lines.map((line) => `\u001b[2K${line}`).join('\n') + '\n');
-    };
-
-    const cleanup = (): void => {
-      io.input.removeListener('keypress', onKeypress);
-      if (typeof io.input.setRawMode === 'function') {
-        io.input.setRawMode(false);
-      }
-      io.input.pause();
-      io.output.write('\u001b[?25h');
-    };
-
-    const onKeypress = (_chunk: string | undefined, key: Key | undefined): void => {
-      if (key === undefined) {
-        return;
-      }
-      if (key.ctrl === true && key.name === 'c') {
-        cleanup();
-        reject(new CliError('aborted', 130));
-        return;
-      }
-      if (key.name === 'up') {
-        cursor = (cursor + state.length - 1) % state.length;
-      } else if (key.name === 'down') {
-        cursor = (cursor + 1) % state.length;
-      } else if (key.name === 'space') {
-        state[cursor].checked = !state[cursor].checked;
-      } else if (key.name === 'return' || key.name === 'enter') {
-        cleanup();
-        resolve(state.filter((item) => item.checked).map((item) => item.id));
-        return;
-      }
-      render();
-    };
-
-    io.input.on('keypress', onKeypress);
-    io.input.resume();
-    render();
-  });
+    throw err;
+  }
 }

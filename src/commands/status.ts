@@ -2,31 +2,39 @@ import { Command } from 'commander';
 import { printResult } from '../lib/output.js';
 import { resolveSpecsRoot } from '../lib/new.js';
 import { listSpecStatuses, readSpecStatus, type IndexIssue, type SpecStatus } from '../lib/index-parser.js';
+import { bold, dim, gold, progressBar, sym } from '../lib/theme.js';
 
 function renderIssueLine(issue: IndexIssue): string {
-  const box = issue.done ? '[x]' : '[ ]';
+  const box = issue.done ? gold(sym.check) : dim(sym.off);
+  const title = issue.done ? dim(`${issue.number} — ${issue.title}`) : `${issue.number} — ${issue.title}`;
   const blocked =
-    !issue.done && issue.blockedBy.length > 0 ? ` (blocked by: ${issue.blockedBy.join(', ')})` : '';
-  return `${box} ${issue.number} — ${issue.title}${blocked}`;
+    !issue.done && issue.blockedBy.length > 0
+      ? dim(` (blocked by: ${issue.blockedBy.join(', ')})`)
+      : '';
+  return `${box} ${title}${blocked}`;
+}
+
+function renderProgressHeader(status: SpecStatus): string {
+  return `${bold(status.slug)}  ${progressBar(status.done, status.total)}  ${status.total} issues (${status.done} done, ${status.pending} pending)`;
 }
 
 export function renderSpecDetail(status: SpecStatus): string {
   if (!status.brokenDown) {
     return `Spec '${status.slug}' has not been broken down yet.`;
   }
-  const header = `${status.slug}  ${status.total} issues (${status.done} done, ${status.pending} pending)`;
-  return [header, ...status.issues.map(renderIssueLine)].join('\n');
+  return [renderProgressHeader(status), ...status.issues.map(renderIssueLine)].join('\n');
 }
 
 export function renderSpecList(statuses: SpecStatus[]): string {
   if (statuses.length === 0) {
     return 'No specs found.';
   }
+  const width = Math.max(...statuses.map((s) => s.slug.length));
   return statuses
     .map((s) =>
       s.brokenDown
-        ? `${s.slug}  ${s.total} issues (${s.done} done, ${s.pending} pending)`
-        : `${s.slug}  not broken down`,
+        ? `${bold(s.slug.padEnd(width))}  ${progressBar(s.done, s.total)}  ${s.total} issues (${s.done} done, ${s.pending} pending)`
+        : `${bold(s.slug.padEnd(width))}  ${dim('not broken down')}`,
     )
     .join('\n');
 }

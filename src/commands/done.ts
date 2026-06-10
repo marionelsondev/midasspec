@@ -2,21 +2,23 @@ import { Command } from 'commander';
 import { printResult } from '../lib/output.js';
 import { resolveSpecsRoot } from '../lib/new.js';
 import { setIssueDone, type ToggleOutcome } from '../lib/track.js';
+import { dim, gold, goldBright, sym } from '../lib/theme.js';
 
 export function renderToggle(outcome: ToggleOutcome): string {
   const verb = outcome.done ? 'done' : 'reopened';
+  const mark = outcome.done ? gold(sym.check) : dim(sym.off);
   const lines = [
     outcome.changed
-      ? `Marked ${outcome.number} — ${outcome.title} as ${verb}.`
-      : `${outcome.number} — ${outcome.title} is already ${outcome.done ? 'done' : 'open'}.`,
+      ? `${mark} Marked ${outcome.number} — ${outcome.title} as ${verb}.`
+      : `${dim(sym.dot)} ${outcome.number} — ${outcome.title} is already ${outcome.done ? 'done' : 'open'}.`,
   ];
   if (outcome.done) {
     if (outcome.newlyReady.length > 0) {
       for (const issue of outcome.newlyReady) {
-        lines.push(`Newly ready: ${issue.number} — ${issue.title}`);
+        lines.push(`${goldBright(sym.active)} Newly ready: ${gold(`${issue.number} — ${issue.title}`)}`);
       }
     } else {
-      lines.push('No issues newly unblocked.');
+      lines.push(dim('No issues newly unblocked.'));
     }
   }
   return lines.join('\n');

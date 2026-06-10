@@ -1,3 +1,5 @@
+import { red, sym } from './theme.js';
+
 export class CliError extends Error {
   constructor(
     message: string,
@@ -16,7 +18,7 @@ export function renderError(message: string, json: boolean): string {
   if (json) {
     return JSON.stringify({ error: { message } });
   }
-  return `Error: ${message}`;
+  return `${red(sym.cross)} Error: ${message}`;
 }
 
 export function printResult(payload: unknown, humanText: string, json: boolean): void {

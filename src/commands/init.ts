@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { relative } from 'node:path';
 import { printResult } from '../lib/output.js';
+import { dim, footer, gold, header, line, step, sym } from '../lib/theme.js';
 import {
   CONFIG_FILENAME,
   generateIntegrations,
@@ -31,32 +32,42 @@ export function renderToolFiles(
   if (group.byTool.length === 0 && group.skipped.length === 0) {
     return;
   }
-  lines.push(`${layer}:`);
+  lines.push(line());
+  lines.push(step(`${layer}:`));
   for (const entry of group.byTool) {
-    lines.push(`  ${entry.tool}:`);
+    lines.push(line(gold(entry.tool)));
     for (const file of entry.files) {
-      lines.push(`    ${file}`);
+      lines.push(line(`  ${dim(file)}`));
     }
   }
   if (group.skipped.length > 0) {
-    lines.push(`  skipped (not supported): ${group.skipped.join(', ')}`);
+    lines.push(line(dim(`skipped (not supported): ${group.skipped.join(', ')}`)));
   }
 }
 
 export function renderInit(payload: InitPayload, cwd: string): string {
-  const lines: string[] = [];
+  const lines: string[] = [header('Spec-Driven Development'), line()];
   if (payload.initialized) {
-    lines.push('Initialized MidasSpec project.');
-    lines.push(`  created ${relative(cwd, payload.specsRoot)}`);
-    lines.push(`  created ${CONFIG_FILENAME}`);
+    lines.push(step('Initialized MidasSpec project.'));
+    lines.push(line(`${gold(sym.check)} created ${relative(cwd, payload.specsRoot)}`));
+    lines.push(line(`${gold(sym.check)} created ${CONFIG_FILENAME}`));
   } else {
-    lines.push(`Project already initialized (${CONFIG_FILENAME} exists).`);
+    lines.push(step(`Project already initialized (${CONFIG_FILENAME} exists).`));
   }
-  lines.push(`Tools: ${payload.tools.length > 0 ? payload.tools.join(', ') : 'none'}`);
-  lines.push(`${payload.generated.agents.path} ${payload.generated.agents.action}`);
+  lines.push(line());
+  lines.push(
+    step(`Tools: ${payload.tools.length > 0 ? gold(payload.tools.join(', ')) : dim('none')}`)
+  );
+  lines.push(line());
+  lines.push(step(`${payload.generated.agents.path} ${dim(payload.generated.agents.action)}`));
   renderToolFiles('Slash commands', payload.generated.commands, lines);
   renderToolFiles('Skills', payload.generated.skills, lines);
-  lines.push(`Saved tools to ${CONFIG_FILENAME}.`);
+  lines.push(line());
+  lines.push(
+    footer(
+      `Saved tools to ${CONFIG_FILENAME}. ${dim(`Next ${sym.dot} try`)} ${gold('/midas:spec')} ${dim('in your agent')}`
+    )
+  );
   return lines.join('\n');
 }
 

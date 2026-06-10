@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { printResult } from '../lib/output.js';
 import { newSpec, SpecConflictError } from '../lib/new.js';
+import { dim, gold, sym } from '../lib/theme.js';
 
 export function makeNewCommand(): Command {
   return new Command('new')
@@ -10,7 +11,7 @@ export function makeNewCommand(): Command {
       const json = cmd.optsWithGlobals<{ json?: boolean }>().json === true;
       try {
         const result = await newSpec(process.cwd(), name);
-        const humanText = `Created ${result.relDir}\nWrite the spec to ${result.relSpecPath}`;
+        const humanText = `${gold(sym.check)} Created ${gold(result.relDir)}\n${dim(`Write the spec to ${result.relSpecPath}`)}`;
         printResult(result, humanText, json);
       } catch (err) {
         if (err instanceof SpecConflictError) {

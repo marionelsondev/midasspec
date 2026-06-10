@@ -10,6 +10,7 @@ import {
 } from '../lib/init.js';
 import { TOOL_REGISTRY } from '../lib/tools.js';
 import { renderToolFiles } from './init.js';
+import { dim, footer, gold, header, line, step } from '../lib/theme.js';
 
 export interface UpdatePayload {
   tools: string[];
@@ -17,15 +18,18 @@ export interface UpdatePayload {
 }
 
 export function renderUpdate(payload: UpdatePayload): string {
-  const lines: string[] = [];
+  const lines: string[] = [header('update'), line()];
   if (payload.tools.length > 0) {
-    lines.push(`Tools: ${payload.tools.join(', ')}`);
+    lines.push(step(`Tools: ${gold(payload.tools.join(', '))}`));
   } else {
-    lines.push('No tools configured.');
+    lines.push(step(dim('No tools configured.')));
   }
-  lines.push(`${payload.generated.agents.path} ${payload.generated.agents.action}`);
+  lines.push(line());
+  lines.push(step(`${payload.generated.agents.path} ${dim(payload.generated.agents.action)}`));
   renderToolFiles('Slash commands', payload.generated.commands, lines);
   renderToolFiles('Skills', payload.generated.skills, lines);
+  lines.push(line());
+  lines.push(footer(dim('Integration files refreshed.')));
   return lines.join('\n');
 }
 

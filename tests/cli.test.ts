@@ -73,7 +73,7 @@ describe('renderError', () => {
 
   it('json=false produces a single line', () => {
     const text = renderError('x', false);
-    expect(text).toBe('Error: x');
+    expect(text).toContain('Error: x');
     expect(text.split('\n')).toHaveLength(1);
   });
 });
