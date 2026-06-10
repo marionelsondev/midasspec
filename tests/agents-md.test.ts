@@ -127,6 +127,9 @@ describe('writeAgentsBlock', () => {
     expect(MANAGED_BLOCK).toContain('midas done <spec-slug> <issue-number>');
     expect(MANAGED_BLOCK).toContain('midas reopen <spec-slug> <issue-number>');
     expect(MANAGED_BLOCK).toContain('midas validate <spec-slug>');
+    expect(MANAGED_BLOCK).toContain('midas start <spec-slug> <issue-number>');
+    expect(MANAGED_BLOCK).toContain('/midas:spec');
+    expect(MANAGED_BLOCK).toContain('.midas/config.yaml');
   });
 
   it('is idempotent with surrounding user content', async () => {

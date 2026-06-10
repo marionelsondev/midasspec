@@ -15,25 +15,39 @@ edits them, never replaces them.
 ## Where things live
 
 - Specs live under \`.midas/specs/<spec-name>/\` by default (configurable via
-  \`specsRoot\` in \`midas.config.yaml\`).
+  \`specsRoot\` in \`.midas/config.yaml\`).
 - Each spec folder has a \`SPEC.md\` (the functional spec), an \`issues/\` folder
-  with one markdown file per issue, and \`issues/INDEX.md\` tracking done state
-  and dependencies (\`blocked by\`).
+  with one markdown file per issue, and \`issues/INDEX.md\` tracking issue state
+  (\`[ ]\` todo, \`[~]\` in progress, \`[x]\` done) and dependencies (\`blocked by\`).
 
-## The workflow loop
+## The workflow
+
+The cycle is spec → break → implement → archive. If the midas slash commands
+or skills are available to you, prefer them — each wraps a stage end to end:
+
+1. \`/midas:spec\` — write the \`SPEC.md\` for a new feature.
+2. \`/midas:break\` — break the spec into issues with a dependency graph.
+3. \`/midas:implement\` — implement the ready issues, tracking each one.
+4. \`/midas:archive\` — validate and archive the finished spec.
+
+Without them, drive the same loop with the CLI:
 
 1. \`midas new <spec-name>\` — scaffold a new spec folder.
 2. Write \`SPEC.md\` — describe components and behaviors (run
    \`midas instructions spec\` for the expected format and project rules).
-3. \`midas instructions break\` — get instructions for breaking the spec into
-   issues, then write \`issues/*.md\` and \`issues/INDEX.md\`.
+3. \`midas instructions break --spec <spec-slug>\` — get instructions for
+   breaking the spec into issues, then write \`issues/*.md\` and \`issues/INDEX.md\`.
 4. \`midas issues <spec-slug> --ready\` — list issues whose blockers are all done.
-5. Implement a ready issue, then \`midas done <spec-slug> <issue-number>\` to mark it.
-6. Repeat 4–5 until every issue is done, then \`midas archive <spec-name>\`.
+5. Pick a ready issue and run \`midas start <spec-slug> <issue-number>\` before
+   touching code, so the index reflects work in progress.
+6. Implement it, then \`midas done <spec-slug> <issue-number>\` — the output
+   lists the issues this unblocked.
+7. Repeat 4–6 until every issue is done, then \`midas archive <spec-slug>\`.
 
 ## Useful commands
 
-- \`midas status\` — progress overview across specs.
+- \`midas status\` — progress overview across specs; \`midas status <spec-slug>\`
+  for per-issue detail.
 - \`midas validate <spec-slug>\` — check SPEC/issue files and INDEX.md consistency.
 - \`midas reopen <spec-slug> <issue-number>\` — undo a \`done\`.
 
