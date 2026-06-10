@@ -1,3 +1,4 @@
+import { release } from 'node:os';
 import pc from 'picocolors';
 
 /**
@@ -9,13 +10,20 @@ import pc from 'picocolors';
  * already honors NO_COLOR / FORCE_COLOR / non-TTY for the base colors.
  */
 
+// Windows 10 build number (third segment of os.release, e.g. "10.0.26100").
+// Conhost renders unicode box drawing since build 10586 and 24-bit color
+// since build 14931, so plain PowerShell/cmd get the full theme too.
+const winBuild =
+  process.platform === 'win32' ? Number(release().split('.')[2]) || 0 : 0;
+
 const truecolor =
   pc.isColorSupported &&
   (process.env.COLORTERM === 'truecolor' ||
     process.env.COLORTERM === '24bit' ||
     process.env.WT_SESSION !== undefined ||
     process.env.TERM_PROGRAM === 'vscode' ||
-    process.env.TERM_PROGRAM === 'iTerm.app');
+    process.env.TERM_PROGRAM === 'iTerm.app' ||
+    winBuild >= 14931);
 
 function rgb(r: number, g: number, b: number): (text: string) => string {
   if (!pc.isColorSupported) {
@@ -44,7 +52,8 @@ const unicode =
   process.platform !== 'win32' ||
   process.env.WT_SESSION !== undefined ||
   process.env.TERM_PROGRAM === 'vscode' ||
-  process.env.TERM !== undefined;
+  process.env.TERM !== undefined ||
+  winBuild >= 10586;
 
 function u(when: string, otherwise: string): string {
   return unicode ? when : otherwise;
@@ -69,7 +78,7 @@ export const sym = {
   blockEmpty: u('░', '.'),
 };
 
-const BANNER_LINES = [
+const MIDAS_LINES = [
   '███╗   ███╗ ██╗ ██████╗   █████╗  ███████╗',
   '████╗ ████║ ██║ ██╔══██╗ ██╔══██╗ ██╔════╝',
   '██╔████╔██║ ██║ ██║  ██║ ███████║ ███████╗',
@@ -78,17 +87,31 @@ const BANNER_LINES = [
   '╚═╝     ╚═╝ ╚═╝ ╚═════╝  ╚═╝  ╚═╝ ╚══════╝',
 ];
 
+const SPEC_LINES = [
+  '███████╗ ██████╗  ███████╗  ██████╗',
+  '██╔════╝ ██╔══██╗ ██╔════╝ ██╔════╝',
+  '███████╗ ██████╔╝ █████╗   ██║     ',
+  '╚════██║ ██╔═══╝  ██╔══╝   ██║     ',
+  '███████║ ██║      ███████╗ ╚██████╗',
+  '╚══════╝ ╚═╝      ╚═╝       ╚═════╝',
+];
+
 /**
- * The MIDAS wordmark in a top-to-bottom gold gradient (bright → gold → deep,
- * like light falling on metal), with a dim tagline. Falls back to a plain
- * bold word on terminals without unicode box-drawing support.
+ * The MIDAS SPEC wordmark in a top-to-bottom gold gradient (bright → gold →
+ * deep, like light falling on metal), with a dim tagline. Both words share a
+ * line on terminals at least 80 columns wide and stack otherwise. Falls back
+ * to a plain bold word on terminals without unicode box-drawing support.
  */
 export function banner(tagline: string): string {
   if (!unicode) {
-    return `${bold(gold('M I D A S'))}\n${dim(tagline)}\n`;
+    return `${bold(gold('M I D A S   S P E C'))}\n${dim(tagline)}\n`;
   }
   const shades = [goldBright, goldBright, gold, gold, goldDim, goldDim];
-  const art = BANNER_LINES.map((row, i) => shades[i](row)).join('\n');
+  const sideBySide = (process.stdout.columns ?? 80) >= 80;
+  const lines = sideBySide
+    ? MIDAS_LINES.map((row, i) => `${row}  ${SPEC_LINES[i]}`)
+    : [...MIDAS_LINES, ...SPEC_LINES];
+  const art = lines.map((row, i) => shades[i % shades.length](row)).join('\n');
   return `${art}\n${dim(tagline)}\n`;
 }
 
