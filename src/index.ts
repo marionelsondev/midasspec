@@ -1,4 +1,5 @@
 import { Command, CommanderError } from 'commander';
+import { realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { CliError, renderError } from './lib/output.js';
@@ -78,8 +79,14 @@ export async function runCli(argv: string[], io?: Partial<CliIO>): Promise<numbe
 }
 
 const isMain = (() => {
+  if (process.argv[1] === undefined) {
+    return false;
+  }
   try {
-    return process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+    // npm bin shims may invoke the entry file through a symlink/junction
+    // (npm link, global installs), while import.meta.url is the realpath —
+    // canonicalize argv[1] so the two always compare equal.
+    return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
   } catch {
     return false;
   }
