@@ -3,6 +3,8 @@ import { realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { CliError, renderError } from './lib/output.js';
+import { globalConfigExists } from './lib/global-setup.js';
+import { red } from './lib/theme.js';
 import { makeArchiveCommand } from './commands/archive.js';
 import { makeDoneCommand, makeReopenCommand } from './commands/done.js';
 import { makeInitCommand } from './commands/init.js';
@@ -61,6 +63,22 @@ export async function runCli(argv: string[], io?: Partial<CliIO>): Promise<numbe
 
   const program = buildProgram();
   program.configureOutput({ writeOut: stdout, writeErr: stderr });
+
+  // First-use orientation: every real subcommand except init points at the
+  // global setup when ~/.midas/config.yaml is missing. Suppressed under
+  // --json, where both streams must stay machine-parseable.
+  program.hook('preAction', async (_thisCommand, actionCommand) => {
+    const name = actionCommand.name();
+    if (name === 'midas' || name === 'init') {
+      return;
+    }
+    if (actionCommand.optsWithGlobals<{ json?: boolean }>().json === true) {
+      return;
+    }
+    if (!(await globalConfigExists())) {
+      stderr(red('MidasSpec is not set up on this machine yet — run `midas init` to configure it.') + '\n');
+    }
+  });
 
   try {
     await program.parseAsync(argv, { from: 'user' });

@@ -1,6 +1,18 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { runCli } from '../src/index.js';
 import { CliError, printResult, renderError, renderJson } from '../src/lib/output.js';
+
+// The global-setup check resolves ~/.midas/config.yaml via os.homedir();
+// point the home at a temp dir so the real one never leaks in.
+const mocked = vi.hoisted(() => ({ home: '' }));
+vi.mock('node:os', async (importOriginal) => {
+  const os = await importOriginal<typeof import('node:os')>();
+  const homedir = () => mocked.home;
+  return { ...os, homedir, default: { ...os, homedir } };
+});
 
 function capture() {
   let out = '';
@@ -43,6 +55,52 @@ describe('runCli', () => {
     const code = await runCli(['--version'], cap.io);
     expect(code).toBe(0);
     expect(cap.out.trim()).toMatch(/^midasspec@\d+\.\d+\.\d+$/);
+  });
+
+  describe('global-setup hint', () => {
+    let dir: string;
+    let home: string;
+
+    beforeEach(async () => {
+      dir = await mkdtemp(join(tmpdir(), 'midas-cli-'));
+      home = await mkdtemp(join(tmpdir(), 'midas-cli-home-'));
+      mocked.home = home;
+      await mkdir(join(dir, '.midas', 'specs'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      mocked.home = '';
+      await rm(dir, { recursive: true, force: true });
+      await rm(home, { recursive: true, force: true });
+    });
+
+    async function runStatus(): Promise<{ code: number; err: string }> {
+      const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir);
+      const stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+      const cap = capture();
+      try {
+        const code = await runCli(['status'], cap.io);
+        return { code, err: cap.err };
+      } finally {
+        stdoutSpy.mockRestore();
+        cwdSpy.mockRestore();
+      }
+    }
+
+    it('points at midas init on stderr when the global config is missing', async () => {
+      const { code, err } = await runStatus();
+      expect(code).toBe(0);
+      expect(err).toContain('run `midas init`');
+    });
+
+    it('stays quiet once the global config exists', async () => {
+      await mkdir(join(home, '.midas'), { recursive: true });
+      await writeFile(join(home, '.midas', 'config.yaml'), 'language: en-US\n', 'utf8');
+
+      const { code, err } = await runStatus();
+      expect(code).toBe(0);
+      expect(err).not.toContain('midas init');
+    });
   });
 
   it('unknown command exits non-zero with one-line stderr mentioning the command', async () => {
