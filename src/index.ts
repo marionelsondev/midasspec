@@ -15,7 +15,7 @@ import { makeUpdateCommand } from './commands/update.js';
 import { makeValidateCommand } from './commands/validate.js';
 
 const require = createRequire(import.meta.url);
-const pkg = require('../package.json') as { version: string; description: string };
+const pkg = require('../package.json') as { name: string; version: string; description: string };
 
 export interface CliIO {
   stdout: (chunk: string) => void;
@@ -27,7 +27,7 @@ export function buildProgram(): Command {
 
   program
     .description(pkg.description)
-    .version(pkg.version)
+    .version(`${pkg.name}@${pkg.version}`)
     .option('--json', 'emit machine-readable JSON output')
     .usage('[options] [command]')
     .exitOverride()

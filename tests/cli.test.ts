@@ -38,12 +38,11 @@ describe('runCli', () => {
     expect(cap.out).toContain('Usage: midas');
   });
 
-  it('--version exits 0 and prints semver', async () => {
+  it('--version exits 0 and prints name@semver', async () => {
     const cap = capture();
     const code = await runCli(['--version'], cap.io);
     expect(code).toBe(0);
-    expect(cap.out.trim()).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(cap.out).toContain('0.1.0');
+    expect(cap.out.trim()).toMatch(/^midasspec@\d+\.\d+\.\d+$/);
   });
 
   it('unknown command exits non-zero with one-line stderr mentioning the command', async () => {
