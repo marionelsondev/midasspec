@@ -5,20 +5,31 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { load } from 'js-yaml';
 import { runCli } from '../src/index.js';
-import {
-  CONFIG_FILENAME,
-  initProject,
-  readConfigTools,
-  setConfigTools,
-} from '../src/lib/init.js';
+import { PROJECT_CONFIG_RELPATH } from '../src/lib/config.js';
 import { TOOL_REGISTRY } from '../src/lib/tools.js';
 import { pickCheckbox } from '../src/lib/picker.js';
 
+// Integrations are generated into the user's global tool folders via
+// os.homedir(); point the home at a temp dir so the tests never touch it.
+const mocked = vi.hoisted(() => ({ home: '' }));
+vi.mock('node:os', async (importOriginal) => {
+  const os = await importOriginal<typeof import('node:os')>();
+  const homedir = () => mocked.home;
+  return { ...os, homedir, default: { ...os, homedir } };
+});
+
 let dir: string;
+let home: string;
 let originalIsTTY: boolean | undefined;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'midas-init-tools-'));
+  home = await mkdtemp(join(tmpdir(), 'midas-init-tools-home-'));
+  mocked.home = home;
+  // Seed the global config so init exercises the per-repo flow, not the
+  // first-run global setup (covered by init-global-setup.test.ts).
+  await mkdir(join(home, '.midas'), { recursive: true });
+  await writeFile(join(home, '.midas', 'config.yaml'), 'tools: []\nlanguage: en-US\n', 'utf8');
   vi.spyOn(process, 'cwd').mockReturnValue(dir);
   originalIsTTY = process.stdin.isTTY;
   process.stdin.isTTY = false;
@@ -28,6 +39,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   (process.stdin as unknown as { isTTY: boolean | undefined }).isTTY = originalIsTTY;
   await rm(dir, { recursive: true, force: true });
+  await rm(home, { recursive: true, force: true });
 });
 
 /** Run the CLI capturing stdout (printResult writes there directly) and stderr. */
@@ -75,7 +87,7 @@ interface InitJson {
 }
 
 describe('midas init --tools', () => {
-  it('generates all three layers and persists the selection', async () => {
+  it('generates all three layers and reports the selection without writing it to the repo', async () => {
     const { code, out } = await run(['init', '--tools', 'claude,cursor', '--json']);
     expect(code).toBe(0);
 
@@ -89,27 +101,35 @@ describe('midas init --tools', () => {
     expect(agents).toContain('<!-- midas:begin -->');
     expect(agents).toContain('<!-- midas:end -->');
 
-    // Commands layer, grouped by tool
+    // Commands layer, grouped by tool — written under the global home, never the repo
     expect(payload.generated.commands.byTool.map((entry) => entry.tool)).toEqual([
       'claude',
       'cursor',
     ]);
-    expect(payload.generated.commands.byTool[0].files).toContain('.claude/commands/midas/spec.md');
-    expect(payload.generated.commands.byTool[1].files).toContain('.cursor/commands/midas-spec.md');
-    expect(await exists(join(dir, '.claude', 'commands', 'midas', 'implement.md'))).toBe(true);
-    expect(await exists(join(dir, '.cursor', 'commands', 'midas-archive.md'))).toBe(true);
+    expect(payload.generated.commands.byTool[0].files).toContain(
+      join(home, '.claude', 'commands', 'midas', 'spec.md')
+    );
+    expect(payload.generated.commands.byTool[1].files).toContain(
+      join(home, '.cursor', 'commands', 'midas-spec.md')
+    );
+    expect(await exists(join(home, '.claude', 'commands', 'midas', 'implement.md'))).toBe(true);
+    expect(await exists(join(home, '.cursor', 'commands', 'midas-archive.md'))).toBe(true);
+    expect(await exists(join(dir, '.claude'))).toBe(false);
+    expect(await exists(join(dir, '.cursor'))).toBe(false);
 
     // Skills layer: claude only, cursor reported as skipped
     expect(payload.generated.skills.byTool.map((entry) => entry.tool)).toEqual(['claude']);
     expect(payload.generated.skills.skipped).toContain('cursor');
-    expect(await exists(join(dir, '.claude', 'skills', 'midas-spec', 'SKILL.md'))).toBe(true);
+    expect(await exists(join(home, '.claude', 'skills', 'midas-spec', 'SKILL.md'))).toBe(true);
 
-    // Persistence
-    const config = load(await readFile(join(dir, CONFIG_FILENAME), 'utf8')) as Record<
+    // tools live only in the global config: no midas.config.yaml is created
+    // and the project config gains no tools key.
+    expect(await exists(join(dir, 'midas.config.yaml'))).toBe(false);
+    const config = load(await readFile(join(dir, PROJECT_CONFIG_RELPATH), 'utf8')) as Record<
       string,
       unknown
     >;
-    expect(config.tools).toEqual(['claude', 'cursor']);
+    expect(config).not.toHaveProperty('tools');
   });
 
   it('--tools all selects every registry tool', async () => {
@@ -127,24 +147,26 @@ describe('midas init --tools', () => {
     expect(parsed.error.message).toContain('claude');
   });
 
-  it('re-running refreshes generated files without duplicating the tools key', async () => {
+  it('re-running refreshes generated files without writing midas.config.yaml', async () => {
     await run(['init', '--tools', 'claude', '--json']);
-    await rm(join(dir, '.claude', 'commands', 'midas', 'spec.md'));
+    await rm(join(home, '.claude', 'commands', 'midas', 'spec.md'));
 
     const { code, out } = await run(['init', '--tools', 'claude', '--json']);
     expect(code).toBe(0);
     const payload = JSON.parse(out) as InitJson;
     expect(payload.initialized).toBe(false);
-    expect(await exists(join(dir, '.claude', 'commands', 'midas', 'spec.md'))).toBe(true);
-
-    const raw = await readFile(join(dir, CONFIG_FILENAME), 'utf8');
-    expect(raw.match(/^tools:/gm)).toHaveLength(1);
+    expect(await exists(join(home, '.claude', 'commands', 'midas', 'spec.md'))).toBe(true);
+    expect(await exists(join(dir, 'midas.config.yaml'))).toBe(false);
   });
 });
 
 describe('midas init --force / non-TTY', () => {
-  it('--force uses detected tools when no config exists', async () => {
-    await mkdir(join(dir, '.claude'), { recursive: true });
+  it('--force uses the tools from the global config', async () => {
+    await writeFile(
+      join(home, '.midas', 'config.yaml'),
+      'tools:\n  - claude\nlanguage: en-US\n',
+      'utf8'
+    );
 
     const { code, out } = await run(['init', '--force', '--json']);
     expect(code).toBe(0);
@@ -152,31 +174,33 @@ describe('midas init --force / non-TTY', () => {
     expect(payload.tools).toEqual(['claude']);
   });
 
-  it('--force prefers the existing tools config and preserves other config values', async () => {
-    await mkdir(join(dir, '.claude'), { recursive: true });
+  it('--force keeps the global selection and preserves the project config bytes', async () => {
     await writeFile(
-      join(dir, CONFIG_FILENAME),
-      'specsRoot: my/specs\ncontext: hello\ntools:\n  - cursor\n',
+      join(home, '.midas', 'config.yaml'),
+      'tools:\n  - cursor\nlanguage: en-US\n',
       'utf8'
     );
+    await mkdir(join(dir, '.midas'), { recursive: true });
+    const projectConfig = 'context: hello\n';
+    await writeFile(join(dir, PROJECT_CONFIG_RELPATH), projectConfig, 'utf8');
 
     const { code, out } = await run(['init', '--force', '--json']);
     expect(code).toBe(0);
     const payload = JSON.parse(out) as InitJson;
     expect(payload.tools).toEqual(['cursor']);
-    expect((await stat(join(dir, 'my', 'specs'))).isDirectory()).toBe(true);
+    expect((await stat(join(dir, '.midas', 'specs'))).isDirectory()).toBe(true);
 
-    const config = load(await readFile(join(dir, CONFIG_FILENAME), 'utf8')) as Record<
-      string,
-      unknown
-    >;
-    expect(config.specsRoot).toBe('my/specs');
-    expect(config.context).toBe('hello');
-    expect(config.tools).toEqual(['cursor']);
+    // The existing project config is preserved byte for byte: no tools key added.
+    expect(await readFile(join(dir, PROJECT_CONFIG_RELPATH), 'utf8')).toBe(projectConfig);
+    expect(await exists(join(dir, 'midas.config.yaml'))).toBe(false);
   });
 
-  it('non-TTY without flags behaves like --force (detected tools)', async () => {
-    await mkdir(join(dir, '.cursor'), { recursive: true });
+  it('non-TTY without flags uses the global tools without asking', async () => {
+    await writeFile(
+      join(home, '.midas', 'config.yaml'),
+      'tools:\n  - cursor\nlanguage: en-US\n',
+      'utf8'
+    );
 
     const { code, out } = await run(['init', '--json']);
     expect(code).toBe(0);
@@ -190,81 +214,11 @@ describe('midas init --force / non-TTY', () => {
     expect(out).toContain('Tools: claude, cursor');
     expect(out).toContain('AGENTS.md created');
     expect(out).toContain('Slash commands:');
-    expect(out).toContain('.claude/commands/midas/spec.md');
-    expect(out).toContain('.cursor/commands/midas-break.md');
+    expect(out).toContain(join(home, '.claude', 'commands', 'midas', 'spec.md'));
+    expect(out).toContain(join(home, '.cursor', 'commands', 'midas-break.md'));
     expect(out).toContain('Skills:');
-    expect(out).toContain('.claude/skills/midas-implement/SKILL.md');
+    expect(out).toContain(join(home, '.claude', 'skills', 'midas-implement', 'SKILL.md'));
     expect(out).toContain('skipped (not supported): cursor');
-  });
-});
-
-describe('setConfigTools / readConfigTools', () => {
-  it('appends a tools block to the template without disturbing other keys', async () => {
-    await initProject(dir);
-    await setConfigTools(dir, ['claude']);
-
-    const raw = await readFile(join(dir, CONFIG_FILENAME), 'utf8');
-    expect(raw).toContain('# MidasSpec configuration');
-    const config = load(raw) as Record<string, unknown>;
-    expect(config).toHaveProperty('context');
-    expect(config).toHaveProperty('rules');
-    expect(config.tools).toEqual(['claude']);
-    expect(await readConfigTools(dir)).toEqual(['claude']);
-  });
-
-  it('replaces an existing tools block in place', async () => {
-    await writeFile(
-      join(dir, CONFIG_FILENAME),
-      'specsRoot: my/specs\ntools:\n  - claude\n  - cursor\ncontext: hi\n',
-      'utf8'
-    );
-
-    await setConfigTools(dir, ['zed']);
-
-    const raw = await readFile(join(dir, CONFIG_FILENAME), 'utf8');
-    const config = load(raw) as Record<string, unknown>;
-    expect(config.tools).toEqual(['zed']);
-    expect(config.specsRoot).toBe('my/specs');
-    expect(config.context).toBe('hi');
-    expect(raw.match(/^tools:/gm)).toHaveLength(1);
-  });
-
-  it('writes an empty list as tools: []', async () => {
-    await initProject(dir);
-    await setConfigTools(dir, []);
-
-    const config = load(await readFile(join(dir, CONFIG_FILENAME), 'utf8')) as Record<
-      string,
-      unknown
-    >;
-    expect(config.tools).toEqual([]);
-    expect(await readConfigTools(dir)).toEqual([]);
-  });
-
-  it('readConfigTools returns null when no config exists', async () => {
-    expect(await readConfigTools(dir)).toBeNull();
-  });
-
-  it('readConfigTools returns null when the tools key is absent', async () => {
-    await initProject(dir);
-    expect(await readConfigTools(dir)).toBeNull();
-  });
-
-  it('replaces a multi-line flow style tools list without corrupting the config', async () => {
-    await writeFile(
-      join(dir, CONFIG_FILENAME),
-      'specsRoot: my/specs\ntools: [\n  claude,\n  cursor\n]\ncontext: hi\n',
-      'utf8'
-    );
-
-    await setConfigTools(dir, ['zed']);
-
-    const raw = await readFile(join(dir, CONFIG_FILENAME), 'utf8');
-    const config = load(raw) as Record<string, unknown>;
-    expect(config.tools).toEqual(['zed']);
-    expect(config.specsRoot).toBe('my/specs');
-    expect(config.context).toBe('hi');
-    expect(raw.match(/^tools:/gm)).toHaveLength(1);
   });
 });
 

@@ -1,12 +1,13 @@
 import { mkdir, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import type { ToolDescriptor } from './tools.js';
+import { resolveGlobalPaths, type ToolDescriptor } from './tools.js';
 import { WORKFLOW_TEMPLATES, type WorkflowTemplate } from './workflow-templates.js';
 
 export interface GenerateSkillsResult {
-  /** Repo-relative posix paths of every SKILL.md written. */
+  /** Absolute paths of every SKILL.md written under the user home. */
   written: string[];
-  /** Ids of selected tools skipped because they have no skills directory. */
+  /** Ids of tools without a global skills destination or whose directory could not be created. */
   skipped: string[];
 }
 
@@ -23,23 +24,27 @@ export function renderSkillFile(template: WorkflowTemplate): string {
 }
 
 export async function generateSkills(
-  cwd: string,
-  tools: ToolDescriptor[]
+  tools: ToolDescriptor[],
+  home: string = homedir()
 ): Promise<GenerateSkillsResult> {
   const written: string[] = [];
   const skipped: string[] = [];
 
   for (const tool of tools) {
-    if (tool.skillsDir === undefined) {
+    const resolved = resolveGlobalPaths(tool, home);
+    if (resolved === null || resolved.skillsDir === undefined) {
       skipped.push(tool.id);
       continue;
     }
-    for (const template of WORKFLOW_TEMPLATES) {
-      const relPath = `${tool.skillsDir}/midas-${template.name}/SKILL.md`;
-      const absPath = join(cwd, ...relPath.split('/'));
-      await mkdir(dirname(absPath), { recursive: true });
-      await writeFile(absPath, renderSkillFile(template), 'utf8');
-      written.push(relPath);
+    try {
+      for (const template of WORKFLOW_TEMPLATES) {
+        const absPath = join(resolved.skillsDir, `midas-${template.name}`, 'SKILL.md');
+        await mkdir(dirname(absPath), { recursive: true });
+        await writeFile(absPath, renderSkillFile(template), 'utf8');
+        written.push(absPath);
+      }
+    } catch {
+      skipped.push(tool.id);
     }
   }
 

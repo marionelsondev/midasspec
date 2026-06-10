@@ -21,6 +21,7 @@ export function makeInstructionsCommand(): Command {
         `Write the ${payload.artifact} artifact to ${payload.relOutputPath}`,
         'Rules:',
         ruleLines,
+        `Language: ${payload.language} — ${payload.languageDirective}`,
         'Run with --json to get the full template and context.',
       ].join('\n');
       printResult(payload, humanText, json);

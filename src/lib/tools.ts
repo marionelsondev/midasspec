@@ -1,4 +1,5 @@
 import { stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { CliError } from './output.js';
 
@@ -8,6 +9,12 @@ export interface ToolCommands {
   /** Relative path (posix) of the command file for a given command name. */
   pathFor: (name: string) => string;
   frontmatter: FrontmatterStyle;
+}
+
+/** Global install destinations, declared relative to the user's home directory. */
+export interface ToolGlobalPaths {
+  skillsDir?: string;
+  commands?: ToolCommands;
 }
 
 export interface ToolDescriptor {
@@ -21,6 +28,8 @@ export interface ToolDescriptor {
   markerOnlyDetection?: boolean;
   commands?: ToolCommands;
   skillsDir?: string;
+  /** Global (home-relative) destinations; omitted when no global convention applies. */
+  global?: ToolGlobalPaths;
 }
 
 export const TOOL_REGISTRY: ToolDescriptor[] = [
@@ -34,6 +43,13 @@ export const TOOL_REGISTRY: ToolDescriptor[] = [
       frontmatter: 'yaml',
     },
     skillsDir: '.claude/skills',
+    global: {
+      skillsDir: '.claude/skills',
+      commands: {
+        pathFor: (name) => `.claude/commands/midas/${name}.md`,
+        frontmatter: 'yaml',
+      },
+    },
   },
   {
     id: 'cursor',
@@ -43,12 +59,21 @@ export const TOOL_REGISTRY: ToolDescriptor[] = [
       pathFor: (name) => `.cursor/commands/midas-${name}.md`,
       frontmatter: 'none',
     },
+    global: {
+      commands: {
+        pathFor: (name) => `.cursor/commands/midas-${name}.md`,
+        frontmatter: 'none',
+      },
+    },
   },
   {
     id: 'windsurf',
     name: 'Windsurf',
     rootDir: '.windsurf',
     skillsDir: '.windsurf/skills',
+    global: {
+      skillsDir: '.windsurf/skills',
+    },
   },
   {
     id: 'codex',
@@ -105,6 +130,39 @@ export const TOOL_REGISTRY: ToolDescriptor[] = [
     rootDir: '.zed',
   },
 ];
+
+export interface ResolvedGlobalPaths {
+  skillsDir?: string;
+  commands?: {
+    pathFor: (name: string) => string;
+    frontmatter: FrontmatterStyle;
+  };
+}
+
+/**
+ * Resolves a tool's global destinations against the user's home directory.
+ * Returns null when the tool has no global convention (it should be skipped).
+ */
+export function resolveGlobalPaths(
+  tool: ToolDescriptor,
+  home: string = homedir(),
+): ResolvedGlobalPaths | null {
+  if (tool.global === undefined) {
+    return null;
+  }
+  const resolved: ResolvedGlobalPaths = {};
+  if (tool.global.skillsDir !== undefined) {
+    resolved.skillsDir = join(home, tool.global.skillsDir);
+  }
+  if (tool.global.commands !== undefined) {
+    const { pathFor, frontmatter } = tool.global.commands;
+    resolved.commands = {
+      pathFor: (name) => join(home, pathFor(name)),
+      frontmatter,
+    };
+  }
+  return resolved;
+}
 
 async function pathExists(path: string): Promise<boolean> {
   try {

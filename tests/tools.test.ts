@@ -3,19 +3,27 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CliError } from '../src/lib/output.js';
-import { CONFIG_FILENAME } from '../src/lib/init.js';
+import { globalConfigPath } from '../src/lib/config.js';
 import { loadConfig } from '../src/lib/instructions.js';
 import { TOOL_REGISTRY, detectTools, resolveToolsFlag } from '../src/lib/tools.js';
 
 let dir: string;
+let home: string;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'midas-tools-'));
+  home = await mkdtemp(join(tmpdir(), 'midas-tools-home-'));
 });
 
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
+  await rm(home, { recursive: true, force: true });
 });
+
+async function writeGlobalConfig(content: string): Promise<void> {
+  await mkdir(join(home, '.midas'), { recursive: true });
+  await writeFile(globalConfigPath(home), content, 'utf8');
+}
 
 describe('TOOL_REGISTRY', () => {
   it('covers all required tool ids', () => {
@@ -131,27 +139,32 @@ describe('resolveToolsFlag', () => {
 });
 
 describe('loadConfig tools key', () => {
-  it('parses tools as a string array', async () => {
-    await writeFile(join(dir, CONFIG_FILENAME), 'tools:\n  - claude\n  - cursor\n', 'utf8');
+  beforeEach(async () => {
+    // loadConfig requires an initialized project (a .midas/ dir).
+    await mkdir(join(dir, '.midas'), { recursive: true });
+  });
 
-    const config = await loadConfig(dir);
+  it('parses tools as a string array from the global config', async () => {
+    await writeGlobalConfig('tools:\n  - claude\n  - cursor\n');
+
+    const config = await loadConfig(dir, home);
 
     expect(config.tools).toEqual(['claude', 'cursor']);
   });
 
   it('defaults tools to [] when the key is missing', async () => {
-    await writeFile(join(dir, CONFIG_FILENAME), 'context: hello\n', 'utf8');
+    await writeGlobalConfig('context: hello\n');
 
-    const config = await loadConfig(dir);
+    const config = await loadConfig(dir, home);
 
     expect(config.tools).toEqual([]);
   });
 
   it('coerces a single string to a one-element array and drops non-strings', async () => {
-    await writeFile(join(dir, CONFIG_FILENAME), 'tools: claude\n', 'utf8');
-    expect((await loadConfig(dir)).tools).toEqual(['claude']);
+    await writeGlobalConfig('tools: claude\n');
+    expect((await loadConfig(dir, home)).tools).toEqual(['claude']);
 
-    await writeFile(join(dir, CONFIG_FILENAME), 'tools:\n  - claude\n  - 42\n', 'utf8');
-    expect((await loadConfig(dir)).tools).toEqual(['claude']);
+    await writeGlobalConfig('tools:\n  - claude\n  - 42\n');
+    expect((await loadConfig(dir, home)).tools).toEqual(['claude']);
   });
 });

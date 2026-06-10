@@ -1,8 +1,8 @@
 import { mkdir, readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
-import { load } from 'js-yaml';
 import { CliError } from './output.js';
-import { CONFIG_FILENAME, DEFAULT_SPECS_ROOT } from './init.js';
+import { requireProjectRoot, SPECS_ROOT_REL } from './config.js';
 
 export function slugify(name: string): string {
   const slug = name
@@ -27,22 +27,14 @@ export class SpecConflictError extends CliError {
   }
 }
 
-export async function resolveSpecsRoot(cwd: string): Promise<string> {
-  let specsRootRel = DEFAULT_SPECS_ROOT;
-  try {
-    const raw = await readFile(join(cwd, CONFIG_FILENAME), 'utf8');
-    const parsed = load(raw);
-    if (
-      parsed !== null &&
-      typeof parsed === 'object' &&
-      typeof (parsed as Record<string, unknown>).specsRoot === 'string'
-    ) {
-      specsRootRel = (parsed as Record<string, unknown>).specsRoot as string;
-    }
-  } catch {
-    // missing or malformed config: fall back to default specs root
-  }
-  return join(cwd, specsRootRel);
+/**
+ * Specs always live at `<root>/.midas/specs`, where the project root is
+ * discovered by walking up from `cwd` until a `.midas/` directory is found.
+ * Throws the standard "project not initialized" CliError when no root exists.
+ */
+export async function resolveSpecsRoot(cwd: string, homeDir = homedir()): Promise<string> {
+  const root = await requireProjectRoot(cwd, homeDir);
+  return join(root, SPECS_ROOT_REL);
 }
 
 export interface NewSpecResult {

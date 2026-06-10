@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Command } from 'commander';
 import { CliError } from '../src/lib/output.js';
-import { DEFAULT_SPECS_ROOT, CONFIG_FILENAME } from '../src/lib/init.js';
+import { DEFAULT_SPECS_ROOT } from '../src/lib/init.js';
 import { newSpec, resolveSpecsRoot, slugify, SpecConflictError } from '../src/lib/new.js';
 import { makeNewCommand } from '../src/commands/new.js';
 
@@ -44,22 +44,43 @@ describe('slugify', () => {
 });
 
 describe('resolveSpecsRoot', () => {
-  it('falls back to default when config is missing', async () => {
+  it('returns <root>/.midas/specs when .midas is present', async () => {
+    await mkdir(join(dir, '.midas'), { recursive: true });
     expect(await resolveSpecsRoot(dir)).toBe(join(dir, DEFAULT_SPECS_ROOT));
+  });
+
+  it('rejects with the project-not-initialized CliError when no .midas exists', async () => {
+    const home = join(dir, 'home');
+    await mkdir(home, { recursive: true });
+    let caught: unknown;
+    try {
+      await resolveSpecsRoot(dir, home);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(CliError);
+    expect((caught as CliError).exitCode).toBe(1);
+    expect((caught as CliError).message).toBe('project not initialized — run midas init');
   });
 
   it('falls back to default on malformed YAML', async () => {
-    await writeFile(join(dir, CONFIG_FILENAME), 'specsRoot: [unclosed\n  ::bad', 'utf8');
+    await mkdir(join(dir, '.midas'), { recursive: true });
+    await writeFile(join(dir, '.midas', 'config.yaml'), 'specsRoot: [unclosed\n  ::bad', 'utf8');
     expect(await resolveSpecsRoot(dir)).toBe(join(dir, DEFAULT_SPECS_ROOT));
   });
 
-  it('honors a string specsRoot from config', async () => {
-    await writeFile(join(dir, CONFIG_FILENAME), 'specsRoot: other/dir\n', 'utf8');
-    expect(await resolveSpecsRoot(dir)).toBe(join(dir, 'other/dir'));
+  it('ignores a specsRoot key in the project config', async () => {
+    await mkdir(join(dir, '.midas'), { recursive: true });
+    await writeFile(join(dir, '.midas', 'config.yaml'), 'specsRoot: other/dir\n', 'utf8');
+    expect(await resolveSpecsRoot(dir)).toBe(join(dir, DEFAULT_SPECS_ROOT));
   });
 });
 
 describe('newSpec', () => {
+  beforeEach(async () => {
+    await mkdir(join(dir, '.midas'), { recursive: true });
+  });
+
   it('creates .midas/specs/pricing-engine and returns paths', async () => {
     const result = await newSpec(dir, 'Pricing Engine');
 
@@ -99,12 +120,13 @@ describe('newSpec', () => {
     expect((await stat(result.dir)).isDirectory()).toBe(true);
   });
 
-  it('honors specsRoot override from midas.config.yaml', async () => {
-    await writeFile(join(dir, CONFIG_FILENAME), 'specsRoot: other/dir\n', 'utf8');
+  it('ignores a specsRoot override in the project config', async () => {
+    await mkdir(join(dir, '.midas'), { recursive: true });
+    await writeFile(join(dir, '.midas', 'config.yaml'), 'specsRoot: other/dir\n', 'utf8');
 
     const result = await newSpec(dir, 'Pricing Engine');
 
-    expect(result.dir).toBe(join(dir, 'other/dir', 'pricing-engine'));
+    expect(result.dir).toBe(join(dir, DEFAULT_SPECS_ROOT, 'pricing-engine'));
     expect((await stat(result.dir)).isDirectory()).toBe(true);
   });
 
@@ -115,6 +137,10 @@ describe('newSpec', () => {
 });
 
 describe('makeNewCommand', () => {
+  beforeEach(async () => {
+    await mkdir(join(dir, '.midas'), { recursive: true });
+  });
+
   function makeProgram(): Command {
     const program = new Command('midas')
       .option('--json', 'emit machine-readable JSON output')

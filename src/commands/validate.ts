@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { CliError, printResult } from '../lib/output.js';
+import { getMessages } from '../lib/messages.js';
 import { renderHumanReport, validateSpec } from '../lib/validate.js';
 
 export function makeValidateCommand(): Command {
@@ -8,10 +9,14 @@ export function makeValidateCommand(): Command {
     .argument('<slug>', 'spec slug')
     .action(async (slug: string, _opts: unknown, cmd: Command) => {
       const json = cmd.optsWithGlobals<{ json?: boolean }>().json === true;
+      const messages = getMessages();
       const result = await validateSpec(process.cwd(), slug);
-      printResult(result, renderHumanReport(result), json);
+      printResult(result, renderHumanReport(result, messages), json);
       if (!result.ok) {
-        throw new CliError(`validation failed: ${result.errorCount} error(s)`, 1);
+        throw new CliError(`validation failed: ${result.errorCount} error(s)`, 1, {
+          key: 'validation-failed',
+          params: { errors: result.errorCount },
+        });
       }
     });
 }

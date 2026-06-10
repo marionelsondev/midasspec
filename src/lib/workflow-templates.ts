@@ -44,18 +44,80 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
   },
   {
     name: 'implement',
-    description: 'Pick the next ready issue of a spec and implement it',
-    argumentHint: '[spec-slug]',
-    body: `Implement the next ready issue of a spec.
+    description:
+      "Implement a spec's ready issues — manual, autonomous (auto), or parallel multi-agent (ultracode) mode",
+    argumentHint: '[spec-slug] [manual|auto|ultracode]',
+    body: `Implement the ready issues of a spec, in the execution mode the user chose.
 
-1. Run \`midas issues <spec-slug> --ready --json\` to list issues whose blockers
-   are all done. If none are ready, report progress and stop.
+## Step 0 — Determine the execution mode (REQUIRED before touching any issue)
+
+The second argument selects the mode: \`manual\`, \`auto\`, or \`ultracode\`.
+If it is missing, ASK the user which mode to use and WAIT for the answer —
+do not pick, start, or implement any issue before the mode is known.
+Present the options with their trade-offs:
+
+- \`manual\` — one issue per run; the user reviews between issues. Slowest,
+  full control.
+- \`auto\` — implement every ready issue sequentially, autonomously, until the
+  spec is done. Single agent, no questions in between.
+- \`ultracode\` — spawn a parallel multi-agent workflow that plans and
+  implements issues concurrently following the dependency graph. Fastest, but
+  uses many agents and tokens; requires the user to have opted into ultracode.
+
+In every mode, each issue follows the same tracked lifecycle so that
+\`midas status\` reflects reality: \`midas start <spec-slug> <NN> --json\` when
+work on the issue begins (marks it \`[~]\` in progress), and
+\`midas done <spec-slug> <NN> --json\` only when it is implemented, tested,
+and reviewed (marks it \`[x]\`).
+
+## manual mode
+
+1. Run \`midas issues <spec-slug> --ready --json\` to list issues whose
+   blockers are all done. If none are ready, report progress and stop.
 2. Pick one ready issue (the lowest number unless the user asked for a
    specific one) and read its markdown file — it is the contract.
-3. Implement exactly what the issue describes, including the tests its
+3. Run \`midas start <spec-slug> <issue-number> --json\`.
+4. Implement exactly what the issue describes, including the tests its
    Expected Result demands, and run the test suite until green.
-4. Run \`midas done <spec-slug> <issue-number> --json\` to mark the issue done.
-5. Summarize what changed and which issues are now unblocked.`,
+5. Run \`midas done <spec-slug> <issue-number> --json\`.
+6. Summarize what changed and which issues are now unblocked, then STOP and
+   let the user review before the next issue.
+
+## auto mode
+
+Loop the manual steps (ready → pick lowest → start → implement → test →
+done) without asking between issues: after each \`midas done\`, re-run
+\`midas issues <spec-slug> --ready --json\` and continue with the next ready
+issue until none remain. Then report a final summary of every issue
+implemented and the test-suite result.
+
+## ultracode mode
+
+Build and run a parallel workflow driven by the dependency graph — no
+fixed waves or barriers: everything runs as early as its dependencies allow,
+and everything that can run in parallel does.
+
+1. Read the full graph with \`midas issues <spec-slug> --json\`. Schedule by
+   dependencies: each issue launches as soon as ALL of its \`blockedBy\`
+   issues are done — never wait for an entire "batch" to finish.
+2. Issues with no dependency between them but that touch the same files must
+   run as one sequential chain; disjoint chains run concurrently.
+3. Run each issue as a two-agent chain: a read-only planner agent (reads the
+   issue file, the SPEC.md, and only the code it needs; returns a structured
+   plan) feeding an implementer agent (implements the plan and writes the
+   tests the issue's Expected Result demands; runs ONLY its own targeted
+   test files — never the full suite or the build, to avoid clashing with
+   parallel agents; never commits; never touches INDEX.md).
+4. ONLY the orchestrator writes to INDEX.md, always one call at a time
+   (parallel calls race on the file and lose updates): run
+   \`midas start <spec-slug> <NN> --json\` immediately before launching an
+   issue's chain, and \`midas done <spec-slug> <NN> --json\` as soon as that
+   issue's chain finishes green.
+5. After all issues finish, run a single verifier agent that executes the
+   FULL test suite and the build, fixes any integration conflicts between
+   issues, and re-runs until green.
+6. Verify independently with \`midas status <spec-slug> --json\` and the full
+   test suite, then summarize what changed per issue.`,
   },
   {
     name: 'archive',

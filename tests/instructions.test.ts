@@ -4,23 +4,27 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Command } from 'commander';
 import { CliError } from '../src/lib/output.js';
-import { CONFIG_FILENAME, DEFAULT_SPECS_ROOT } from '../src/lib/init.js';
+import { DEFAULT_SPECS_ROOT } from '../src/lib/init.js';
 import {
   getInstructions,
   loadConfig,
   ISSUE_TEMPLATE,
+  LANGUAGE_DIRECTIVES,
   SPEC_TEMPLATE,
 } from '../src/lib/instructions.js';
 import { makeInstructionsCommand } from '../src/commands/instructions.js';
 
 let dir: string;
+let home: string;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'midas-instructions-'));
+  home = await mkdtemp(join(tmpdir(), 'midas-instructions-home-'));
 });
 
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
+  await rm(home, { recursive: true, force: true });
 });
 
 const FULL_CONFIG = `context: |
@@ -34,7 +38,8 @@ rules:
 `;
 
 async function writeConfig(content: string): Promise<void> {
-  await writeFile(join(dir, CONFIG_FILENAME), content, 'utf8');
+  await mkdir(join(dir, '.midas'), { recursive: true });
+  await writeFile(join(dir, '.midas', 'config.yaml'), content, 'utf8');
 }
 
 async function scaffoldSpec(slug: string, root = DEFAULT_SPECS_ROOT): Promise<void> {
@@ -47,7 +52,7 @@ describe('getInstructions', () => {
   it('returns spec template, spec rules, context, and SPEC.md path', async () => {
     await writeConfig(FULL_CONFIG);
 
-    const payload = await getInstructions(dir, 'spec', 'pricing-engine');
+    const payload = await getInstructions(dir, 'spec', 'pricing-engine', home);
 
     expect(payload.artifact).toBe('spec');
     expect(payload.template).toBe(SPEC_TEMPLATE);
@@ -61,7 +66,7 @@ describe('getInstructions', () => {
     await writeConfig(FULL_CONFIG);
     await scaffoldSpec('pricing-engine');
 
-    const payload = await getInstructions(dir, 'break', 'pricing-engine');
+    const payload = await getInstructions(dir, 'break', 'pricing-engine', home);
 
     expect(payload.artifact).toBe('break');
     expect(payload.template).toBe(ISSUE_TEMPLATE);
@@ -74,7 +79,7 @@ describe('getInstructions', () => {
   it('uses a <slug> placeholder path for spec without a slug', async () => {
     await writeConfig(FULL_CONFIG);
 
-    const payload = await getInstructions(dir, 'spec');
+    const payload = await getInstructions(dir, 'spec', undefined, home);
 
     expect(payload.outputPath).toBe(join(dir, DEFAULT_SPECS_ROOT, '<slug>', 'SPEC.md'));
     expect(payload.relOutputPath).toBe('.midas/specs/<slug>/SPEC.md');
@@ -83,7 +88,7 @@ describe('getInstructions', () => {
   it('has context: null (key present) when context is omitted', async () => {
     await writeConfig('rules:\n  spec:\n    - a rule\n');
 
-    const payload = await getInstructions(dir, 'spec');
+    const payload = await getInstructions(dir, 'spec', undefined, home);
 
     expect('context' in payload).toBe(true);
     expect(payload.context).toBeNull();
@@ -92,7 +97,7 @@ describe('getInstructions', () => {
   it('returns rules: [] when the rules section is missing', async () => {
     await writeConfig('context: hello\n');
 
-    const payload = await getInstructions(dir, 'spec');
+    const payload = await getInstructions(dir, 'spec', undefined, home);
 
     expect(payload.rules).toEqual([]);
   });
@@ -100,7 +105,7 @@ describe('getInstructions', () => {
   it('coerces a single-string rule to a one-element array', async () => {
     await writeConfig('rules:\n  spec: only one rule\n');
 
-    const payload = await getInstructions(dir, 'spec');
+    const payload = await getInstructions(dir, 'spec', undefined, home);
 
     expect(payload.rules).toEqual(['only one rule']);
   });
@@ -108,7 +113,7 @@ describe('getInstructions', () => {
   it('rejects with CliError exit 1 when config is missing', async () => {
     let caught: unknown;
     try {
-      await getInstructions(dir, 'spec');
+      await getInstructions(dir, 'spec', undefined, home);
     } catch (err) {
       caught = err;
     }
@@ -121,7 +126,7 @@ describe('getInstructions', () => {
 
     let caught: unknown;
     try {
-      await getInstructions(dir, 'break', 'no-such-spec');
+      await getInstructions(dir, 'break', 'no-such-spec', home);
     } catch (err) {
       caught = err;
     }
@@ -133,24 +138,94 @@ describe('getInstructions', () => {
   it('rejects with CliError exit 2 for break without a slug', async () => {
     await writeConfig(FULL_CONFIG);
 
-    await expect(getInstructions(dir, 'break')).rejects.toMatchObject({ exitCode: 2 });
+    await expect(getInstructions(dir, 'break', undefined, home)).rejects.toMatchObject({ exitCode: 2 });
   });
 
-  it('honors specsRoot override and keeps relOutputPath posix', async () => {
+  it('includes language pt-BR and the pt-BR directive when configured', async () => {
+    await writeConfig(`${FULL_CONFIG}language: pt-BR\n`);
+
+    const payload = await getInstructions(dir, 'spec', undefined, home);
+
+    expect(payload.language).toBe('pt-BR');
+    expect(payload.languageDirective).toBe(LANGUAGE_DIRECTIVES['pt-BR']);
+    expect(payload.languageDirective).toContain('Brazilian Portuguese');
+    expect(payload.languageDirective).toContain('INDEX.md');
+    expect(payload.languageDirective).toContain('in English');
+  });
+
+  it('defaults language to en-US with the en-US directive when unconfigured', async () => {
+    await writeConfig(FULL_CONFIG);
+
+    const payload = await getInstructions(dir, 'spec', undefined, home);
+
+    expect(payload.language).toBe('en-US');
+    expect(payload.languageDirective).toBe(LANGUAGE_DIRECTIVES['en-US']);
+    expect(payload.languageDirective).toContain('INDEX.md');
+    expect(payload.languageDirective).toContain('in English');
+  });
+
+  it('includes language and directive on the break payload', async () => {
+    await writeConfig(`${FULL_CONFIG}language: pt-BR\n`);
+    await scaffoldSpec('pricing-engine');
+
+    const payload = await getInstructions(dir, 'break', 'pricing-engine', home);
+
+    expect(payload.language).toBe('pt-BR');
+    expect(payload.languageDirective).toBe(LANGUAGE_DIRECTIVES['pt-BR']);
+  });
+
+  it('returns a byte-identical template regardless of language', async () => {
+    await scaffoldSpec('pricing-engine');
+
+    await writeConfig(`${FULL_CONFIG}language: pt-BR\n`);
+    const ptSpec = await getInstructions(dir, 'spec', undefined, home);
+    const ptBreak = await getInstructions(dir, 'break', 'pricing-engine', home);
+
+    await writeConfig(FULL_CONFIG);
+    const enSpec = await getInstructions(dir, 'spec', undefined, home);
+    const enBreak = await getInstructions(dir, 'break', 'pricing-engine', home);
+
+    expect(ptSpec.template).toBe(enSpec.template);
+    expect(ptSpec.template).toBe(SPEC_TEMPLATE);
+    expect(ptBreak.template).toBe(enBreak.template);
+    expect(ptBreak.template).toBe(ISSUE_TEMPLATE);
+  });
+
+  it('rejects with CliError exit 1 for an unsupported language', async () => {
+    await writeConfig(`${FULL_CONFIG}language: fr-FR\n`);
+
+    await expect(getInstructions(dir, 'spec', undefined, home)).rejects.toMatchObject({ exitCode: 1 });
+    await expect(getInstructions(dir, 'spec', undefined, home)).rejects.toThrow(/fr-FR/);
+  });
+
+  it('ignores a specsRoot override and keeps relOutputPath posix', async () => {
     await writeConfig(`specsRoot: custom/dir\n${FULL_CONFIG}`);
-    await scaffoldSpec('pricing-engine', 'custom/dir');
+    await scaffoldSpec('pricing-engine');
 
-    const payload = await getInstructions(dir, 'break', 'pricing-engine');
+    const payload = await getInstructions(dir, 'break', 'pricing-engine', home);
 
-    expect(payload.outputPath).toBe(join(dir, 'custom/dir', 'pricing-engine', 'issues'));
-    expect(payload.relOutputPath).toBe('custom/dir/pricing-engine/issues');
+    expect(payload.outputPath).toBe(join(dir, DEFAULT_SPECS_ROOT, 'pricing-engine', 'issues'));
+    expect(payload.relOutputPath).toBe('.midas/specs/pricing-engine/issues');
     expect(payload.relOutputPath).not.toContain('\\');
   });
 });
 
 describe('loadConfig', () => {
-  it('rejects with exit 1 when midas.config.yaml is absent', async () => {
-    await expect(loadConfig(dir)).rejects.toMatchObject({ exitCode: 1 });
+  it('rejects with exit 1 when the .midas directory is absent', async () => {
+    await expect(loadConfig(dir, home)).rejects.toMatchObject({ exitCode: 1 });
+  });
+
+  it('succeeds with defaults when .midas exists without a config.yaml', async () => {
+    await mkdir(join(dir, '.midas'), { recursive: true });
+
+    const config = await loadConfig(dir, home);
+
+    expect(config).toEqual({
+      language: 'en-US',
+      tools: [],
+      context: null,
+      rules: { spec: [], break: [] },
+    });
   });
 });
 
@@ -192,6 +267,34 @@ describe('makeInstructionsCommand', () => {
     expect(payload.rules).toEqual(['keep pages small', 'name behaviors in kebab-case']);
     expect(payload.context).toContain('Internal billing platform.');
     expect(payload.outputPath).toBe(join(dir, DEFAULT_SPECS_ROOT, '<slug>', 'SPEC.md'));
+  });
+
+  it('emits language and languageDirective in the JSON payload', async () => {
+    await writeConfig(`${FULL_CONFIG}language: pt-BR\n`);
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir);
+    let out = '';
+    const stdoutSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation((chunk: string | Uint8Array) => {
+        out += chunk.toString();
+        return true;
+      });
+
+    try {
+      await makeProgram().parseAsync(['instructions', 'spec', '--json'], { from: 'user' });
+    } finally {
+      stdoutSpy.mockRestore();
+      cwdSpy.mockRestore();
+    }
+
+    const payload = JSON.parse(out) as {
+      template: string;
+      language: string;
+      languageDirective: string;
+    };
+    expect(payload.language).toBe('pt-BR');
+    expect(payload.languageDirective).toBe(LANGUAGE_DIRECTIVES['pt-BR']);
+    expect(payload.template).toBe(SPEC_TEMPLATE);
   });
 
   it('rejects with exit code 2 for an unknown artifact', async () => {

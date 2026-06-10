@@ -1,4 +1,4 @@
-import { checkbox } from '@inquirer/prompts';
+import { checkbox, select } from '@inquirer/prompts';
 import { CliError } from './output.js';
 import { bold, dim, gold, goldBright, sym } from './theme.js';
 
@@ -6,6 +6,11 @@ export interface PickerItem {
   id: string;
   label: string;
   checked: boolean;
+}
+
+export interface SelectItem {
+  id: string;
+  label: string;
 }
 
 export interface PickerIO {
@@ -48,6 +53,50 @@ export async function pickCheckbox(items: PickerItem[], io: PickerIO): Promise<s
           icon: {
             checked: gold(sym.on),
             unchecked: dim(sym.off),
+            cursor: goldBright('❯'),
+          },
+        },
+      },
+      { input: io.input, output: io.output }
+    );
+  } catch (err) {
+    if (err instanceof Error && err.name === 'ExitPromptError') {
+      throw new CliError('aborted', 130);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Single-select counterpart to pickCheckbox, on @inquirer/select with the
+ * same midas gold theme. Streams are injected so tests can drive it with
+ * non-TTY streams.
+ */
+export async function pickSelect(
+  message: string,
+  items: SelectItem[],
+  selectedId: string,
+  io: PickerIO
+): Promise<string> {
+  try {
+    return await select<string>(
+      {
+        message,
+        choices: items.map((item) => ({
+          value: item.id,
+          name: item.label,
+        })),
+        default: selectedId,
+        loop: false,
+        theme: {
+          prefix: { idle: goldBright(sym.active), done: gold(sym.step) },
+          style: {
+            message: (text: string) => bold(text),
+            answer: (text: string) => gold(text),
+            highlight: (text: string) => goldBright(text),
+            help: (text: string) => dim(text),
+          },
+          icon: {
             cursor: goldBright('❯'),
           },
         },

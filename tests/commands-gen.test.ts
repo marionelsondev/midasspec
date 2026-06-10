@@ -8,16 +8,17 @@ import { TOOL_REGISTRY, type ToolDescriptor } from '../src/lib/tools.js';
 
 const claude = TOOL_REGISTRY.find((t) => t.id === 'claude') as ToolDescriptor;
 const cursor = TOOL_REGISTRY.find((t) => t.id === 'cursor') as ToolDescriptor;
+const windsurf = TOOL_REGISTRY.find((t) => t.id === 'windsurf') as ToolDescriptor;
 const codex = TOOL_REGISTRY.find((t) => t.id === 'codex') as ToolDescriptor;
 
-let dir: string;
+let home: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'midas-commands-'));
+  home = await mkdtemp(join(tmpdir(), 'midas-commands-home-'));
 });
 
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(home, { recursive: true, force: true });
 });
 
 describe('WORKFLOW_TEMPLATES', () => {
@@ -35,6 +36,20 @@ describe('WORKFLOW_TEMPLATES', () => {
       expect(template.body).toMatch(/`midas .*--json`/);
       expect(template.description.length).toBeGreaterThan(0);
     }
+  });
+
+  it('implement requires an execution mode and tracks issues via start/done', () => {
+    const impl = WORKFLOW_TEMPLATES.find((t) => t.name === 'implement')!;
+    expect(impl.argumentHint).toBe('[spec-slug] [manual|auto|ultracode]');
+    expect(impl.body).toContain('`manual`');
+    expect(impl.body).toContain('`auto`');
+    expect(impl.body).toContain('`ultracode`');
+    expect(impl.body).toContain('ASK the user');
+    expect(impl.body).toContain('WAIT for the answer');
+    expect(impl.body).toContain('midas start <spec-slug>');
+    expect(impl.body).toContain('midas done <spec-slug>');
+    // The ultracode recipe must keep INDEX.md writes serialized in the orchestrator.
+    expect(impl.body).toContain('ONLY the orchestrator writes to INDEX.md');
   });
 });
 
@@ -58,62 +73,77 @@ describe('renderCommandFile', () => {
 });
 
 describe('generateCommands', () => {
-  it('writes the four command files at each tool-specific path', async () => {
-    const result = await generateCommands(dir, [claude, cursor]);
+  it('writes the four command files at each tool global path', async () => {
+    const result = await generateCommands([claude, cursor], home);
 
     expect(result.written).toEqual([
-      '.claude/commands/midas/spec.md',
-      '.claude/commands/midas/break.md',
-      '.claude/commands/midas/implement.md',
-      '.claude/commands/midas/archive.md',
-      '.cursor/commands/midas-spec.md',
-      '.cursor/commands/midas-break.md',
-      '.cursor/commands/midas-implement.md',
-      '.cursor/commands/midas-archive.md',
+      join(home, '.claude', 'commands', 'midas', 'spec.md'),
+      join(home, '.claude', 'commands', 'midas', 'break.md'),
+      join(home, '.claude', 'commands', 'midas', 'implement.md'),
+      join(home, '.claude', 'commands', 'midas', 'archive.md'),
+      join(home, '.cursor', 'commands', 'midas-spec.md'),
+      join(home, '.cursor', 'commands', 'midas-break.md'),
+      join(home, '.cursor', 'commands', 'midas-implement.md'),
+      join(home, '.cursor', 'commands', 'midas-archive.md'),
     ]);
     expect(result.skipped).toEqual([]);
 
     const claudeSpec = await readFile(
-      join(dir, '.claude', 'commands', 'midas', 'spec.md'),
+      join(home, '.claude', 'commands', 'midas', 'spec.md'),
       'utf8'
     );
     expect(claudeSpec.startsWith('---\n')).toBe(true);
     expect(claudeSpec).toContain('description:');
 
-    const cursorSpec = await readFile(join(dir, '.cursor', 'commands', 'midas-spec.md'), 'utf8');
+    const cursorSpec = await readFile(join(home, '.cursor', 'commands', 'midas-spec.md'), 'utf8');
     expect(cursorSpec.startsWith('---')).toBe(false);
     expect(cursorSpec).toContain('midas instructions spec --json');
   });
 
-  it('reports tools without a command adapter as skipped', async () => {
-    const result = await generateCommands(dir, [codex, claude]);
+  it('reports tools without a global command destination as skipped', async () => {
+    const result = await generateCommands([windsurf, codex, claude], home);
 
-    expect(result.skipped).toEqual(['codex']);
+    expect(result.skipped).toEqual(['windsurf', 'codex']);
     expect(result.written).toHaveLength(4);
-    expect(result.written.every((p) => p.startsWith('.claude/'))).toBe(true);
+    expect(result.written.every((p) => p.startsWith(join(home, '.claude')))).toBe(true);
   });
 
   it('overwrites midas-owned files but leaves other files untouched', async () => {
-    const commandsDir = join(dir, '.claude', 'commands', 'midas');
+    const commandsDir = join(home, '.claude', 'commands', 'midas');
     await mkdir(commandsDir, { recursive: true });
     await writeFile(join(commandsDir, 'custom.md'), 'user content\n', 'utf8');
     await writeFile(join(commandsDir, 'spec.md'), 'stale generated content\n', 'utf8');
 
-    const result = await generateCommands(dir, [claude]);
+    const result = await generateCommands([claude], home);
 
-    expect(result.written).toContain('.claude/commands/midas/spec.md');
+    expect(result.written).toContain(join(commandsDir, 'spec.md'));
     const spec = await readFile(join(commandsDir, 'spec.md'), 'utf8');
     expect(spec).not.toContain('stale generated content');
     expect(spec).toContain('midas instructions spec --json');
     expect(await readFile(join(commandsDir, 'custom.md'), 'utf8')).toBe('user content\n');
   });
 
+  it('skips a tool whose global directory cannot be created without aborting the rest', async () => {
+    // a plain file occupying ~/.claude makes mkdir of .claude/commands/... fail
+    await writeFile(join(home, '.claude'), 'not a directory\n', 'utf8');
+
+    const result = await generateCommands([claude, cursor], home);
+
+    expect(result.skipped).toEqual(['claude']);
+    expect(result.written).toEqual([
+      join(home, '.cursor', 'commands', 'midas-spec.md'),
+      join(home, '.cursor', 'commands', 'midas-break.md'),
+      join(home, '.cursor', 'commands', 'midas-implement.md'),
+      join(home, '.cursor', 'commands', 'midas-archive.md'),
+    ]);
+  });
+
   it('is idempotent: regeneration yields identical files', async () => {
-    await generateCommands(dir, [claude, cursor]);
-    const path = join(dir, '.cursor', 'commands', 'midas-implement.md');
+    await generateCommands([claude, cursor], home);
+    const path = join(home, '.cursor', 'commands', 'midas-implement.md');
     const first = await readFile(path, 'utf8');
 
-    await generateCommands(dir, [claude, cursor]);
+    await generateCommands([claude, cursor], home);
 
     expect(await readFile(path, 'utf8')).toBe(first);
   });

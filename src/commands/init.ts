@@ -1,26 +1,28 @@
 import { Command } from 'commander';
 import { relative } from 'node:path';
 import { printResult } from '../lib/output.js';
-import { banner, dim, footer, gold, header, line, step, sym } from '../lib/theme.js';
+import { dim, footer, gold, header, line, step, sym } from '../lib/theme.js';
 import {
-  CONFIG_FILENAME,
   generateIntegrations,
   initProject,
-  readConfigTools,
-  setConfigTools,
   type GeneratedReport,
   type InitResult,
 } from '../lib/init.js';
-import { detectTools, resolveToolsFlag, TOOL_REGISTRY, type ToolDescriptor } from '../lib/tools.js';
-import { pickCheckbox } from '../lib/picker.js';
+import { resolveToolsFlag, TOOL_REGISTRY, type ToolDescriptor } from '../lib/tools.js';
+import { readConfigLanguage } from '../lib/language.js';
+import { findProjectRoot, resolveConfig } from '../lib/config.js';
+import { globalConfigExists, runGlobalSetup } from '../lib/global-setup.js';
 
 export interface InitPayload extends InitResult {
   tools: string[];
+  language: string;
   generated: GeneratedReport;
+  globalSetup: { performed: boolean; configPath: string | null };
 }
 
 interface InitOptions {
   tools?: string;
+  language?: string;
   force?: boolean;
 }
 
@@ -47,74 +49,100 @@ export function renderToolFiles(
 
 export function renderInit(payload: InitPayload, cwd: string): string {
   const lines: string[] = [header('Spec-Driven Development'), line()];
-  if (payload.initialized) {
-    lines.push(step('Initialized MidasSpec project.'));
-    lines.push(line(`${gold(sym.check)} created ${relative(cwd, payload.specsRoot)}`));
-    lines.push(line(`${gold(sym.check)} created ${CONFIG_FILENAME}`));
-  } else {
-    lines.push(step(`Project already initialized (${CONFIG_FILENAME} exists).`));
+  lines.push(
+    step(payload.initialized ? 'Initialized MidasSpec project.' : 'Project already initialized.')
+  );
+  lines.push(
+    line(
+      `${gold(sym.check)} ${relative(cwd, payload.specsRoot)} ${dim(
+        payload.createdSpecsRoot ? 'created' : 'already exists'
+      )}`
+    )
+  );
+  lines.push(
+    line(
+      `${gold(sym.check)} ${relative(cwd, payload.configPath)} ${dim(
+        payload.createdConfig ? 'created' : 'kept existing'
+      )}`
+    )
+  );
+  if (payload.globalSetup.performed && payload.globalSetup.configPath !== null) {
+    lines.push(line());
+    lines.push(step(`Global setup: saved ${gold(payload.globalSetup.configPath)}`));
   }
   lines.push(line());
   lines.push(
     step(`Tools: ${payload.tools.length > 0 ? gold(payload.tools.join(', ')) : dim('none')}`)
   );
   lines.push(line());
+  lines.push(step(`Language: ${gold(payload.language)}`));
+  lines.push(line());
   lines.push(step(`${payload.generated.agents.path} ${dim(payload.generated.agents.action)}`));
   renderToolFiles('Slash commands', payload.generated.commands, lines);
   renderToolFiles('Skills', payload.generated.skills, lines);
   lines.push(line());
-  lines.push(
-    footer(
-      `Saved tools to ${CONFIG_FILENAME}. ${dim(`Next ${sym.dot} try`)} ${gold('/midas:spec')} ${dim('in your agent')}`
-    )
-  );
+  lines.push(footer(`${dim(`Next ${sym.dot} try`)} ${gold('/midas:spec')} ${dim('in your agent')}`));
   return lines.join('\n');
 }
 
-async function resolveSelection(cwd: string, opts: InitOptions): Promise<ToolDescriptor[]> {
+/**
+ * Tool selection when the global config already exists: the --tools flag
+ * wins, otherwise the global `tools` is reused — no questions asked.
+ */
+async function resolveSelectionWithGlobal(
+  cwd: string,
+  opts: InitOptions
+): Promise<ToolDescriptor[]> {
   if (opts.tools !== undefined) {
     return resolveToolsFlag(opts.tools);
   }
-  const interactive =
-    opts.force !== true && process.stdin.isTTY === true && process.stdout.isTTY === true;
-  if (interactive) {
-    process.stdout.write(`${banner('Spec-Driven Development')}\n`);
-    const detected = await detectTools(cwd);
-    const detectedIds = new Set(detected.map((tool) => tool.id));
-    const pickedIds = await pickCheckbox(
-      TOOL_REGISTRY.map((tool) => ({
-        id: tool.id,
-        label: tool.name,
-        checked: detectedIds.has(tool.id),
-      })),
-      { input: process.stdin, output: process.stdout }
-    );
-    return TOOL_REGISTRY.filter((tool) => pickedIds.includes(tool.id));
-  }
-  // --force / non-TTY: reuse the existing tools config when present, else detect.
-  const configured = await readConfigTools(cwd);
-  if (configured !== null) {
-    return TOOL_REGISTRY.filter((tool) => configured.includes(tool.id));
-  }
-  return detectTools(cwd);
+  const configured = (await resolveConfig(cwd)).tools;
+  return TOOL_REGISTRY.filter((tool) => configured.includes(tool.id));
 }
 
 export function makeInitCommand(): Command {
   return new Command('init')
     .description('Prepare the repository for the SDD workflow')
     .option('--tools <ids>', 'comma-separated tool ids (or "all"); skips the prompt')
-    .option('--force', 'skip the prompt, using detected tools or the existing tools config')
+    .option(
+      '--language <id>',
+      'language for the first-run global setup (en-US or pt-BR); skips the prompt'
+    )
+    .option('--force', 'skip the prompt, using the tools from the global config')
     .action(async (opts: InitOptions, cmd: Command) => {
       const json = cmd.optsWithGlobals<{ json?: boolean }>().json === true;
       const cwd = process.cwd();
+      // Re-running inside a subdirectory of an initialized project acts on
+      // the existing root; a fresh repo initializes at the cwd.
+      const root = (await findProjectRoot(cwd)) ?? cwd;
 
-      const selected = await resolveSelection(cwd, opts);
-      const result = await initProject(cwd);
-      const generated = await generateIntegrations(cwd, selected);
+      let selected: ToolDescriptor[];
+      let globalSetup: InitPayload['globalSetup'] = { performed: false, configPath: null };
+      if (await globalConfigExists()) {
+        selected = await resolveSelectionWithGlobal(cwd, opts);
+      } else {
+        const interactive =
+          opts.force !== true &&
+          !json &&
+          process.stdin.isTTY === true &&
+          process.stdout.isTTY === true;
+        const setup = await runGlobalSetup(cwd, {
+          toolsFlag: opts.tools,
+          languageFlag: opts.language,
+          interactive,
+        });
+        selected = setup.tools;
+        globalSetup = { performed: true, configPath: setup.configPath };
+      }
+
+      // Resolved from the layered config (project > global > default); init
+      // never prompts for it nor writes it — the override is a manual edit.
+      const language = await readConfigLanguage(cwd);
+      const result = await initProject(root);
+      const generated = await generateIntegrations(root, selected);
       const toolIds = selected.map((tool) => tool.id);
-      await setConfigTools(cwd, toolIds);
 
-      const payload: InitPayload = { ...result, tools: toolIds, generated };
-      printResult(payload, renderInit(payload, cwd), json);
+      const payload: InitPayload = { ...result, tools: toolIds, language, generated, globalSetup };
+      printResult(payload, renderInit(payload, root), json);
     });
 }

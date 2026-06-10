@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { CliError } from './output.js';
+import { getMessages, type Messages } from './messages.js';
 import { resolveSpecsRoot } from './new.js';
 import { dim, gold, red, sym, yellowWarn } from './theme.js';
 
@@ -161,7 +162,7 @@ export function parseIndexBlockedBy(line: string): string[] {
 function parseIndexEntries(content: string): IndexEntry[] {
   const entries: IndexEntry[] = [];
   for (const line of content.split(/\r?\n/)) {
-    const m = /^\s*-\s*\[([ xX])\]\s*\[(\d+)\s*[—-]+\s*(.+?)\]\(([^)]+)\)/.exec(line);
+    const m = /^\s*-\s*\[([ xX~])\]\s*\[(\d+)\s*[—-]+\s*(.+?)\]\(([^)]+)\)/.exec(line);
     if (!m) {
       continue;
     }
@@ -196,7 +197,10 @@ export async function validateSpec(cwd: string, slug: string): Promise<ValidateR
   try {
     specContent = await readFile(specPath, 'utf8');
   } catch {
-    throw new CliError(`spec '${slug}' not found: missing ${relSpecPath}`, 1);
+    throw new CliError(`spec '${slug}' not found: missing ${relSpecPath}`, 1, {
+      key: 'spec-not-found',
+      params: { slug, path: relSpecPath },
+    });
   }
 
   const findings: Finding[] = [...validateSpecContent(specContent, relSpecPath)];
@@ -279,15 +283,13 @@ export async function validateSpec(cwd: string, slug: string): Promise<ValidateR
   return { slug, findings, errorCount, warningCount, ok: errorCount === 0 };
 }
 
-export function renderHumanReport(result: ValidateResult): string {
+export function renderHumanReport(result: ValidateResult, messages: Messages = getMessages()): string {
   const lines = result.findings.map((f) => {
-    const tag = f.severity === 'error' ? red(`${sym.cross} ${f.severity}`) : yellowWarn(f.severity);
+    const severity = messages.validate.severity(f.severity);
+    const tag = f.severity === 'error' ? red(`${sym.cross} ${severity}`) : yellowWarn(severity);
     return `${tag}  ${f.file}  ${dim(`${f.rule}:`)} ${f.message}`;
   });
-  lines.push(
-    result.ok
-      ? `${gold(sym.check)} OK: ${result.errorCount} error(s), ${result.warningCount} warning(s)`
-      : `${red(sym.cross)} FAILED: ${result.errorCount} error(s), ${result.warningCount} warning(s)`,
-  );
+  const summary = messages.validate.summary(result.ok, result.errorCount, result.warningCount);
+  lines.push(result.ok ? `${gold(sym.check)} ${summary}` : `${red(sym.cross)} ${summary}`);
   return lines.join('\n');
 }

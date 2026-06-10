@@ -1,15 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCli } from '../src/index.js';
-import { CONFIG_FILENAME } from '../src/lib/init.js';
+import { runUpdate } from '../src/lib/update.js';
+import { CliError } from '../src/lib/output.js';
+
+// Integrations are generated into the user's global tool folders via
+// os.homedir(); point the home at a temp dir so the tests never touch it.
+const mocked = vi.hoisted(() => ({ home: '' }));
+vi.mock('node:os', async (importOriginal) => {
+  const os = await importOriginal<typeof import('node:os')>();
+  const homedir = () => mocked.home;
+  return { ...os, homedir, default: { ...os, homedir } };
+});
 
 let dir: string;
+let home: string;
 let originalIsTTY: boolean | undefined;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'midas-update-'));
+  home = await mkdtemp(join(tmpdir(), 'midas-update-home-'));
+  mocked.home = home;
   vi.spyOn(process, 'cwd').mockReturnValue(dir);
   originalIsTTY = process.stdin.isTTY;
   process.stdin.isTTY = false;
@@ -19,6 +32,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   (process.stdin as unknown as { isTTY: boolean | undefined }).isTTY = originalIsTTY;
   await rm(dir, { recursive: true, force: true });
+  await rm(home, { recursive: true, force: true });
 });
 
 /** Run the CLI capturing stdout (printResult writes there directly) and stderr. */
@@ -55,88 +69,132 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
+/** Write the global config (~/.midas/config.yaml) inside the temp home. */
+async function writeGlobalConfig(homePath: string, yaml: string): Promise<void> {
+  await mkdir(join(homePath, '.midas'), { recursive: true });
+  await writeFile(join(homePath, '.midas', 'config.yaml'), yaml, 'utf8');
+}
+
 interface UpdateJson {
   tools: string[];
   generated: {
-    agents: { path: string; action: string };
     commands: { byTool: { tool: string; files: string[] }[]; skipped: string[] };
     skills: { byTool: { tool: string; files: string[] }[]; skipped: string[] };
   };
 }
 
 describe('midas update', () => {
-  it('regenerates all layers from the tools configured in midas.config.yaml', async () => {
-    await run(['init', '--tools', 'claude,cursor', '--json']);
-    await rm(join(dir, '.claude', 'commands', 'midas', 'spec.md'));
-    await rm(join(dir, '.claude', 'skills', 'midas-spec'), { recursive: true });
-    await rm(join(dir, 'AGENTS.md'));
+  it('regenerates the global integrations from the global tools config', async () => {
+    await writeGlobalConfig(home, 'tools:\n  - claude\n  - cursor\n');
 
     const { code, out } = await run(['update', '--json']);
     expect(code).toBe(0);
 
     const payload = JSON.parse(out) as UpdateJson;
     expect(payload.tools).toEqual(['claude', 'cursor']);
-    expect(payload.generated.agents).toEqual({ path: 'AGENTS.md', action: 'created' });
     expect(payload.generated.commands.byTool.map((entry) => entry.tool)).toEqual([
       'claude',
       'cursor',
     ]);
-    expect(payload.generated.commands.byTool[0].files).toContain('.claude/commands/midas/spec.md');
+    expect(payload.generated.commands.byTool[0].files).toContain(
+      join(home, '.claude', 'commands', 'midas', 'spec.md')
+    );
     expect(payload.generated.skills.byTool.map((entry) => entry.tool)).toEqual(['claude']);
     expect(payload.generated.skills.skipped).toContain('cursor');
 
-    expect(await exists(join(dir, '.claude', 'commands', 'midas', 'spec.md'))).toBe(true);
-    expect(await exists(join(dir, '.claude', 'skills', 'midas-spec', 'SKILL.md'))).toBe(true);
-    expect(await exists(join(dir, 'AGENTS.md'))).toBe(true);
+    expect(await exists(join(home, '.claude', 'commands', 'midas', 'spec.md'))).toBe(true);
+    expect(await exists(join(home, '.claude', 'skills', 'midas-spec', 'SKILL.md'))).toBe(true);
+    // Nothing is written inside the repo — no AGENTS.md, no .claude/.
+    expect(await readdir(dir)).toEqual([]);
   });
 
-  it('fails with exit 1 pointing to midas init when midas.config.yaml is missing', async () => {
+  it('overwrites midas-managed files and preserves foreign files in the same folders', async () => {
+    await writeGlobalConfig(home, 'tools:\n  - claude\n');
+    const managed = join(home, '.claude', 'commands', 'midas', 'spec.md');
+    const foreignCommand = join(home, '.claude', 'commands', 'foreign.md');
+    const foreignSkill = join(home, '.claude', 'skills', 'meu-skill', 'SKILL.md');
+    await mkdir(join(home, '.claude', 'commands', 'midas'), { recursive: true });
+    await mkdir(join(home, '.claude', 'skills', 'meu-skill'), { recursive: true });
+    await writeFile(managed, 'stale garbage\n', 'utf8');
+    await writeFile(foreignCommand, 'my own command\n', 'utf8');
+    await writeFile(foreignSkill, 'my own skill\n', 'utf8');
+
+    const { code } = await run(['update', '--json']);
+    expect(code).toBe(0);
+
+    expect(await readFile(managed, 'utf8')).toContain('midas instructions');
+    expect(await readFile(foreignCommand, 'utf8')).toBe('my own command\n');
+    expect(await readFile(foreignSkill, 'utf8')).toBe('my own skill\n');
+  });
+
+  it('fails with exit 1 pointing to midas init when the global config is missing', async () => {
     const { code, err } = await run(['update', '--json']);
     expect(code).toBe(1);
     const parsed = JSON.parse(err.trim()) as { error: { message: string } };
-    expect(parsed.error.message).toContain(CONFIG_FILENAME);
     expect(parsed.error.message).toContain('midas init');
+    expect(parsed.error.message).toContain(join(home, '.midas', 'config.yaml'));
   });
 
-  it('with no tools configured still refreshes AGENTS.md and reports no tools', async () => {
-    await writeFile(join(dir, CONFIG_FILENAME), 'tools: []\n', 'utf8');
+  it('with no tools configured reports no tools and writes nothing', async () => {
+    await writeGlobalConfig(home, 'tools: []\n');
 
     const { code, out } = await run(['update']);
     expect(code).toBe(0);
     expect(out).toContain('No tools configured.');
-    expect(out).toContain('AGENTS.md created');
-    const agents = await readFile(join(dir, 'AGENTS.md'), 'utf8');
-    expect(agents).toContain('<!-- midas:begin -->');
-
-    // Running again refreshes the managed block idempotently.
-    const second = await run(['update', '--json']);
-    expect(second.code).toBe(0);
-    const payload = JSON.parse(second.out) as UpdateJson;
-    expect(payload.tools).toEqual([]);
-    expect(payload.generated.agents.action).toBe('unchanged');
+    expect(await exists(join(home, '.claude'))).toBe(false);
+    expect(await readdir(dir)).toEqual([]);
   });
 
-  it('human output lists refreshed files in the same format as init', async () => {
-    await run(['init', '--tools', 'claude,cursor', '--json']);
-
-    const { code, out } = await run(['update']);
-    expect(code).toBe(0);
-    expect(out).toContain('Tools: claude, cursor');
-    expect(out).toContain('AGENTS.md unchanged');
-    expect(out).toContain('Slash commands:');
-    expect(out).toContain('.claude/commands/midas/spec.md');
-    expect(out).toContain('.cursor/commands/midas-break.md');
-    expect(out).toContain('Skills:');
-    expect(out).toContain('.claude/skills/midas-implement/SKILL.md');
-    expect(out).toContain('skipped (not supported): cursor');
-  });
-
-  it('ignores unknown tool ids left in the config', async () => {
-    await writeFile(join(dir, CONFIG_FILENAME), 'tools:\n  - claude\n  - nope\n', 'utf8');
+  it('ignores unknown tool ids left in the global config', async () => {
+    await writeGlobalConfig(home, 'tools:\n  - claude\n  - nope\n');
 
     const { code, out } = await run(['update', '--json']);
     expect(code).toBe(0);
     const payload = JSON.parse(out) as UpdateJson;
     expect(payload.tools).toEqual(['claude']);
+  });
+
+  it('human output lists refreshed files and skipped tools', async () => {
+    await writeGlobalConfig(home, 'tools:\n  - claude\n  - cursor\n');
+
+    const { code, out } = await run(['update']);
+    expect(code).toBe(0);
+    expect(out).toContain('Tools: claude, cursor');
+    expect(out).toContain('Slash commands:');
+    expect(out).toContain(join(home, '.claude', 'commands', 'midas', 'spec.md'));
+    expect(out).toContain(join(home, '.cursor', 'commands', 'midas-break.md'));
+    expect(out).toContain('Skills:');
+    expect(out).toContain(join(home, '.claude', 'skills', 'midas-implement', 'SKILL.md'));
+    expect(out).toContain('skipped (not supported): cursor');
+  });
+
+  describe('runUpdate (lib)', () => {
+    it('returns the report for an injected home without relying on os.homedir', async () => {
+      const otherHome = await mkdtemp(join(tmpdir(), 'midas-update-lib-'));
+      try {
+        await writeGlobalConfig(otherHome, 'tools:\n  - claude\n');
+        const report = await runUpdate(otherHome);
+        expect(report.tools).toEqual(['claude']);
+        expect(report.commands.byTool[0].files).toContain(
+          join(otherHome, '.claude', 'commands', 'midas', 'spec.md')
+        );
+        expect(report.skills.byTool[0].tool).toBe('claude');
+      } finally {
+        await rm(otherHome, { recursive: true, force: true });
+      }
+    });
+
+    it('throws CliError with exit 1 when the global config does not exist', async () => {
+      const emptyHome = await mkdtemp(join(tmpdir(), 'midas-update-lib-'));
+      try {
+        await expect(runUpdate(emptyHome)).rejects.toMatchObject({
+          exitCode: 1,
+          message: expect.stringContaining('midas init'),
+        });
+        await expect(runUpdate(emptyHome)).rejects.toBeInstanceOf(CliError);
+      } finally {
+        await rm(emptyHome, { recursive: true, force: true });
+      }
+    });
   });
 });

@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
-import { load } from 'js-yaml';
 import { CliError } from './output.js';
-import { CONFIG_FILENAME } from './init.js';
+import { requireProjectRoot, resolveConfig, type ResolvedConfig } from './config.js';
+import type { Language } from './language.js';
 import { resolveSpecsRoot } from './new.js';
 
 export type Artifact = 'spec' | 'break';
@@ -66,59 +67,22 @@ export const ISSUE_TEMPLATE = `# NN — <Title>
 - None
 `;
 
-export interface MidasConfig {
-  context: string | null;
-  rules: { spec: string[]; break: string[] };
-  tools: string[];
-}
+export const LANGUAGE_DIRECTIVES: Record<Language, string> = {
+  'en-US':
+    'Write all prose content (titles, descriptions, behaviors) in English (United States) and converse with the user in English (United States). Keep structural headings and INDEX.md syntax (e.g., `## Overview`, `## All issues`, checkbox lines, `blocked by:` annotations) in English.',
+  'pt-BR':
+    'Write all prose content (titles, descriptions, behaviors) in Brazilian Portuguese (pt-BR) and converse with the user in Brazilian Portuguese. Keep structural headings and INDEX.md syntax (e.g., `## Overview`, `## All issues`, checkbox lines, `blocked by:` annotations) in English.',
+};
+
+export type MidasConfig = ResolvedConfig;
 
 function toPosix(path: string): string {
   return path.split('\\').join('/');
 }
 
-function coerceRules(value: unknown): string[] {
-  if (typeof value === 'string') {
-    return [value];
-  }
-  if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === 'string');
-  }
-  return [];
-}
-
-export async function loadConfig(cwd: string): Promise<MidasConfig> {
-  let raw: string;
-  try {
-    raw = await readFile(join(cwd, CONFIG_FILENAME), 'utf8');
-  } catch {
-    throw new CliError('project not initialized — run midas init', 1);
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = load(raw);
-  } catch {
-    parsed = null;
-  }
-
-  const obj =
-    parsed !== null && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
-
-  const context = typeof obj.context === 'string' && obj.context.trim() !== '' ? obj.context : null;
-
-  const rulesObj =
-    obj.rules !== null && typeof obj.rules === 'object'
-      ? (obj.rules as Record<string, unknown>)
-      : {};
-
-  return {
-    context,
-    rules: {
-      spec: coerceRules(rulesObj.spec),
-      break: coerceRules(rulesObj.break),
-    },
-    tools: coerceRules(obj.tools),
-  };
+export async function loadConfig(cwd: string, homeDir = homedir()): Promise<MidasConfig> {
+  await requireProjectRoot(cwd, homeDir);
+  return resolveConfig(cwd, homeDir);
 }
 
 export interface InstructionsPayload {
@@ -126,6 +90,8 @@ export interface InstructionsPayload {
   template: string;
   rules: string[];
   context: string | null;
+  language: Language;
+  languageDirective: string;
   outputPath: string;
   relOutputPath: string;
 }
@@ -134,9 +100,10 @@ export async function getInstructions(
   cwd: string,
   artifact: Artifact,
   specSlug?: string,
+  homeDir = homedir(),
 ): Promise<InstructionsPayload> {
-  const config = await loadConfig(cwd);
-  const root = await resolveSpecsRoot(cwd);
+  const config = await loadConfig(cwd, homeDir);
+  const root = await resolveSpecsRoot(cwd, homeDir);
 
   if (artifact === 'spec') {
     const outputPath = join(root, specSlug ?? '<slug>', 'SPEC.md');
@@ -145,6 +112,8 @@ export async function getInstructions(
       template: SPEC_TEMPLATE,
       rules: config.rules.spec,
       context: config.context,
+      language: config.language,
+      languageDirective: LANGUAGE_DIRECTIVES[config.language],
       outputPath,
       relOutputPath: toPosix(relative(cwd, outputPath)),
     };
@@ -167,6 +136,8 @@ export async function getInstructions(
     template: ISSUE_TEMPLATE,
     rules: config.rules.break,
     context: config.context,
+    language: config.language,
+    languageDirective: LANGUAGE_DIRECTIVES[config.language],
     outputPath,
     relOutputPath: toPosix(relative(cwd, outputPath)),
   };
