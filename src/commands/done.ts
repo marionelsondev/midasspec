@@ -14,7 +14,9 @@ export function renderToggle(outcome: ToggleOutcome, messages: Messages = getMes
       : `${dim(sym.dot)} ${messages.toggle.already(label, outcome.done)}`,
   ];
   if (outcome.done) {
-    if (outcome.newlyReady.length > 0) {
+    if (outcome.specComplete) {
+      lines.push(`${goldBright(sym.active)} ${messages.toggle.specComplete(outcome.slug)}`);
+    } else if (outcome.newlyReady.length > 0) {
       for (const issue of outcome.newlyReady) {
         lines.push(
           `${goldBright(sym.active)} ${messages.toggle.newlyReady(gold(`${issue.number} — ${issue.title}`))}`,

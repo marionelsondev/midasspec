@@ -13,6 +13,8 @@ export interface ToggleOutcome {
   done: boolean;
   changed: boolean;
   newlyReady: ResolvedIssue[];
+  /** True when this toggle leaves every issue in the spec done. */
+  specComplete: boolean;
 }
 
 const CHECKBOX_RE = /^(\s*-\s*\[)( |x|X|~)(\]\s*\[(\d{2}))/;
@@ -115,9 +117,11 @@ export async function setIssueState(
 
   const newlyReady = state === 'done' ? computeNewlyReady(before, number) : [];
   const done = state === 'done';
+  const specComplete =
+    done && before.every((i) => i.number === number || i.done);
 
   if (target.state === state) {
-    return { slug, number, title: target.title, state, done, changed: false, newlyReady };
+    return { slug, number, title: target.title, state, done, changed: false, newlyReady, specComplete };
   }
 
   const toggled = toggleIssueInIndex(markdown, number, state);
@@ -128,7 +132,7 @@ export async function setIssueState(
     });
   }
   await writeFile(indexPath, toggled.markdown, 'utf8');
-  return { slug, number, title: target.title, state, done, changed: true, newlyReady };
+  return { slug, number, title: target.title, state, done, changed: true, newlyReady, specComplete };
 }
 
 export async function setIssueDone(

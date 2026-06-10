@@ -31,6 +31,7 @@ export interface Messages {
     alreadyStarted(label: string): string;
     newlyReady(label: string): string;
     noneUnblocked: string;
+    specComplete(slug: string): string;
   };
   validate: {
     severity(s: 'error' | 'warning'): string;
@@ -71,6 +72,7 @@ const EN: Messages = {
     alreadyStarted: (label) => `${label} is already in progress.`,
     newlyReady: (label) => `Newly ready: ${label}`,
     noneUnblocked: 'No issues newly unblocked.',
+    specComplete: (slug) => `All issues done — run midas archive ${slug} (or /midas:archive) to close the spec.`,
   },
   validate: {
     severity: (s) => s,

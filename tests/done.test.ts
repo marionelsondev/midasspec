@@ -127,10 +127,20 @@ describe('setIssueDone', () => {
       changed: true,
     });
     expect(outcome.newlyReady.map((i) => i.number)).toEqual(['03']);
+    expect(outcome.specComplete).toBe(false);
 
     const written = await readFile(indexPath, 'utf8');
     const parsed = parseIndex(written);
     expect(parsed.find((i) => i.number === '01')!.done).toBe(true);
+  });
+
+  it('reports specComplete when the last open issue is done', async () => {
+    await makeSpec();
+    await setIssueDone(dir, 'pricing-engine', '01', true);
+
+    const outcome = await setIssueDone(dir, 'pricing-engine', '03', true);
+
+    expect(outcome.specComplete).toBe(true);
   });
 
   it('throws for an unknown number without touching the file', async () => {
@@ -202,9 +212,26 @@ describe('renderToggle', () => {
       newlyReady: [
         { ...issue({ number: '03', title: 'Add API' }), state: 'ready', pendingBlockers: [] },
       ],
+      specComplete: false,
     });
     expect(out).toContain('Marked 01 — Set up schema as done.');
     expect(out).toContain('Newly ready: 03 — Add API');
+  });
+
+  it('suggests archiving when the spec is complete', () => {
+    const out = renderToggle({
+      slug: 'pricing-engine',
+      number: '03',
+      title: 'Add API',
+      state: 'done',
+      done: true,
+      changed: true,
+      newlyReady: [],
+      specComplete: true,
+    });
+    expect(out).toContain('All issues done');
+    expect(out).toContain('midas archive pricing-engine');
+    expect(out).not.toContain('No issues newly unblocked.');
   });
 
   it('notes when nothing was unblocked', () => {
@@ -216,6 +243,7 @@ describe('renderToggle', () => {
       done: true,
       changed: true,
       newlyReady: [],
+      specComplete: false,
     });
     expect(out).toContain('No issues newly unblocked.');
   });
@@ -229,6 +257,7 @@ describe('renderToggle', () => {
       done: false,
       changed: true,
       newlyReady: [],
+      specComplete: false,
     });
     expect(out).toContain('Marked 02 — Build calculator as reopened.');
     expect(out).not.toContain('unblocked');

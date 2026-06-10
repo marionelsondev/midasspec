@@ -24,7 +24,9 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
    requirements are unambiguous.
 4. Write SPEC.md at the returned path, following the returned template and
    every rule. Describe components and behaviors — not implementation.
-5. Run \`midas validate <spec-slug> --json\` and fix any reported problems.`,
+5. Run \`midas validate <spec-slug> --json\` and fix any reported problems.
+6. Tell the user the spec is ready and that the next step is
+   \`/midas:break <spec-slug>\` to break it into issues.`,
   },
   {
     name: 'break',
@@ -40,7 +42,9 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
 3. Write one markdown file per issue under \`issues/\` and an \`issues/INDEX.md\`
    listing every issue with its \`blocked by\` dependencies, following the
    returned template and rules exactly.
-4. Run \`midas validate <spec-slug> --json\` and fix any reported problems.`,
+4. Run \`midas validate <spec-slug> --json\` and fix any reported problems.
+5. Tell the user the breakdown is ready and that the next step is
+   \`/midas:implement <spec-slug>\` to start implementing.`,
   },
   {
     name: 'implement',
@@ -81,7 +85,8 @@ and reviewed (marks it \`[x]\`).
    Expected Result demands, and run the test suite until green.
 5. Run \`midas done <spec-slug> <issue-number> --json\`.
 6. Summarize what changed and which issues are now unblocked, then STOP and
-   let the user review before the next issue.
+   let the user review before the next issue. When no issues remain, suggest
+   \`/midas:archive <spec-slug>\`.
 
 ## auto mode
 
@@ -89,7 +94,7 @@ Loop the manual steps (ready → pick lowest → start → implement → test �
 done) without asking between issues: after each \`midas done\`, re-run
 \`midas issues <spec-slug> --ready --json\` and continue with the next ready
 issue until none remain. Then report a final summary of every issue
-implemented and the test-suite result.
+implemented and the test-suite result, and suggest \`/midas:archive <spec-slug>\`.
 
 ## ultracode mode
 
@@ -117,7 +122,8 @@ and everything that can run in parallel does.
    FULL test suite and the build, fixes any integration conflicts between
    issues, and re-runs until green.
 6. Verify independently with \`midas status <spec-slug> --json\` and the full
-   test suite, then summarize what changed per issue.`,
+   test suite, then summarize what changed per issue and suggest
+   \`/midas:archive <spec-slug>\`.`,
   },
   {
     name: 'archive',
