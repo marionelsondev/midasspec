@@ -73,7 +73,7 @@ Gerados para cada ferramenta configurada; commands e skills são os mesmos cinco
 | `/midas:spec [descrição-da-feature]` | Recebe uma descrição livre do que você quer, deriva o nome da spec, cria a estrutura, faz perguntas de esclarecimento, escreve o `SPEC.md` seguindo o template e as regras do projeto, e valida. |
 | `/midas:analyze [spec-slug]` | *(opcional)* Revisa o `SPEC.md` em busca de ambiguidades, casos de borda ausentes, comportamentos não testáveis e riscos de escopo, reportando os achados por severidade — somente leitura, nunca edita a spec. |
 | `/midas:break [spec-slug]` | Quebra o `SPEC.md` em issues pequenas e verificáveis de forma independente, com grafo de dependências `blocked by`, e valida. |
-| `/midas:implement [spec-slug] [manual\|auto\|ultracode]` | Implementa as issues prontas. `manual`: uma issue por vez, você revisa entre elas. `auto`: todas as issues prontas em sequência. `ultracode`: execução paralela multi-agente seguindo o grafo de dependências. |
+| `/midas:implement [spec-slug] [manual\|auto\|ultracode]` | Implementa as issues prontas. `manual`: uma issue por vez, com etapa opcional de planejamento antes, você revisa entre elas. `auto`: todas as issues prontas em sequência via subagents (planner → implementer por issue). `ultracode`: workflow paralelo multi-agente seguindo o grafo de dependências; cai para `auto` se o agente não tiver a funcionalidade de workflow. |
 | `/midas:archive [spec-slug]` | Confirma que todas as issues estão concluídas, valida e arquiva a spec. |
 
 ## Configuração
@@ -104,7 +104,7 @@ A saída humana do CLI é sempre em inglês; `language` governa o conteúdo das 
 
 ## Ferramentas suportadas
 
-Claude Code, Cursor, Windsurf, Codex, Gemini CLI, GitHub Copilot, OpenCode, Cline, Roo Code, Kilo Code, Aider, Amazon Q e Zed. Ferramentas sem convenção nativa de slash command ou skills ainda recebem a camada universal do `AGENTS.md`.
+Claude Code, Cursor, Windsurf, Codex CLI e Gemini CLI. Ferramentas sem convenção nativa de slash command ou skills ainda recebem a camada universal do `AGENTS.md`.
 
 ## Licença
 
