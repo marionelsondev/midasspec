@@ -1,6 +1,6 @@
 {
   "name": "midasspec",
-  "version": "4.0.0",
+  "version": "0.4.0",
   "description": "Spec-Driven Development CLI: scaffold specs, validate artifacts, and track issue progress from markdown.",
   "keywords": [
     "spec-driven-development",
